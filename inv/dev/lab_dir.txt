@@ -1,0 +1,224 @@
+Lab Objective
+
+The objective of this lab is to introduce the creation of the Ansible Inventory.
+
+The Ansible inventory is a description of hosts organized into groups and or sub-groups. There's no right or wrong way to set up your inventory, provided you remain organized.
+
+Read more about inventory here:
+https://docs.ansible.com/ansible/latest/user_guide/intro_inventory.html
+
+Types of Ansible Inventories:
+
+    Static - A user defines a list of hosts in a YAML, JSON, or INI format. Other formats exist, such as commas separated hosts (CSH), however, the aforementioned are the most popular formats.
+
+    Dynamic - A user creates a python script that audits infrastructure, and then "prints" YAML or JSON, which is then used by YAML as the inventory source. This is great for situations where a human could not possibly create a static inventory fast enough. Think situations like clouds, or networks, where devices come on and off line in a hurry.
+
+    Hybrid - A combination of static and dynamic sources.
+
+The Ansible Ad-Hoc mode allows users to run 'one off' commands without creating playbooks. In this lab, we'll use two modules, ansible.builtin.ping and ansible.builtin.command.
+
+The module ansible.builtin.ping tests SSH connectivity and confirms Python is installed on the remote hosts. If the ping is successful, the remote hosts will respond with a 'pong'. To be clear, this module may be poorly named, as it has nothing to do with ICMP.
+
+The module ansible.builtin.command allows a user to run CLI commands on remote hosts. This is the default module run when users are running ansible in Ad-Hoc mode. That is to say, if a user does not indicate a module to use in Ad-Hoc mode, the ansible.builtin.command module will be used.
+
+Resources:
+
+    Ansible Documentation - builtin.ansible.ping
+    Ansible Documentation - builtin.ansible.command
+
+Procedure
+
+    Open a new terminal, then change directory to the /home/student/ directory.
+
+    student@bchd:~$ cd ~
+
+Run the setup script for this lab. This script sets up 4 hosts accessible by SSH.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Once the script finishes, you can SSH to the machine.
+
+student@bchd:~$ ssh bender
+
+Exit the bender machine. We have confirmed we can access it via SSH.
+
+bender@bender:~$ exit
+
+Ssh into the fry machine.
+
+student@bchd:~$ ssh fry
+
+Exit the fry machine. We have confirmed we can access it via SSH.
+
+fry@fry:~$ exit
+
+Ssh into the zoidberg machine.
+
+student@bchd:~$ ssh zoidberg
+
+Exit the zoidberg machine. We have confirmed we can access it via SSH.
+
+zoidberg@zoidberg:~$ exit
+
+The fourth machine, farnsworth has some issues with copying his key. Therefore, we will connect to this machine with a password. To enable the connection to farnsworth with SSH, we'll need to augment the controller with a python package, sshpass. You may have this installed already, but verify with the below command.
+
+student@bchd:~$ sudo apt install sshpass -y
+
+After confirming sshpass is installed connect with the farnsworth machine. Type in the password alta3 to connect. Remember to type exit before moving to the next step.
+
+student@bchd:~$ ssh farnsworth
+
+Exit the farnsworth machine. We have confirmed we can access it via SSH.
+
+[farnsworth@farnsworth ~]$ exit
+
+Before starting to work with our remote hosts, let's get a feel for the ansible in ad-hoc mode against the localhost (your Ansible controller). If we do not indicate a module in these commands, via -m command, the command module will still be used. The command module is default behavior, and is akin to running commands at the CLI.
+
+student@bchd:~$ ansible localhost -m ansible.builtin.command -a "whoami"
+
+localhost | CHANGED | rc=0 >>
+student
+
+Run the CLI command pwd via the command module. Note the lack of -m command. This module will still be used.
+
+student@bchd:~$ ansible localhost -a "pwd"
+
+[WARNING]: No inventory was parsed, only implicit localhost is available
+localhost | CHANGED | rc=0 >>
+/home/student
+
+If you need some help understanding what the command module does, check out the documentation on it.
+
+student@bchd:~$ ansible-doc ansible.builtin.command
+
+Scroll up and down with the arrow keys. Press q to exit.
+
+The setup script also created a few inventory files. Examine one of them now.
+
+student@bchd:~$ batcat ~/mycode/inv/dev/hosts
+
+To do anything interesting, we need to create an inventory. Convention says we should call this file a hosts file, although users can actually call this file anything they like. Especially if that name better describes the inventory's contents. Note the following entry:
+
+[planetexpress]
+bender      ansible_host=10.10.2.3 ansible_user=bender ansible_python_interpreter=/usr/bin/python3
+fry         ansible_host=10.10.2.4 ansible_user=fry ansible_python_interpreter=/usr/bin/python3
+zoidberg    ansible_host=10.10.2.5 ansible_user=zoidberg ansible_python_interpreter=/usr/bin/python3
+farnsworth  ansible_host=10.10.2.6 ansible_user=farnsworth ansible_ssh_pass=alta3
+
+Hosts are organized into 'groups'. Organizing hosts into groups allows users to easily run solutions against groups of hosts. Hosts can have 'host variables' defined in-line. Any variable that begins with the word ansible_, usually controls how Ansible runs, or reflects how Ansible ran. For example, the hostname to connect with (ansible_user), or the IP address to connect to (ansible_host).
+
+Create your own inventory file.
+
+student@bchd:~$ vim ~/mycode/inv/dev/applerecords
+
+Copy and paste the following into your new inventory host file, applerecords
+
+[labhosts]
+stuart    ansible_host=10.10.1.5 ansible_user=stuart ansible_ssh_pass=alta3
+pete      ansible_host=10.10.1.6 ansible_user=pete ansible_ssh_pass=alta3
+
+[lostbeatle]
+stuart    ansible_host=10.10.1.5 ansible_user=stuart
+pete      ansible_host=10.10.1.6 ansible_user=pete
+
+[guitar]
+john      ansible_host=10.10.1.2 ansible_user=john
+george    ansible_host=10.10.1.4 ansible_user=george
+paul      ansible_host=10.10.1.3 ansible_user=paul
+
+[bass]
+pete      ansible_host=10.10.1.6 ansible_user=pete
+
+[drums]
+ringo     ansible_host=10.10.1.7 ansible_user=ringo ansible_ssh_pass=alta3
+pete      ansible_host=10.10.1.6 ansible_user=pete
+
+[beatles]
+john      ansible_host=10.10.1.2 ansible_user=john
+george    ansible_host=10.10.1.4 ansible_user=george
+ringo     ansible_host=10.10.1.7 ansible_user=ringo
+paul      ansible_host=10.10.1.3 ansible_user=paul
+
+[strings:children]
+guitar
+bass
+
+[allbeatles:children]
+lostbeatle
+beatles
+
+Save and exit with :wq
+
+Answer the following questions:
+
+    Q: What are the sections of the inventory with square brackets?
+        A: Those are groups. Hosts are organized within groups
+    Q: Why do some groups end with ":children"?
+        A: This denotes a group of groups. The ":children" tag indicates "lostbeatle" and "beatles" are actually other groups, not hosts.
+    Q: How many groups are there within the inventory "applerecords"?
+        A: 8 total. 6 contain hosts, and 2 are groups of groups.
+
+We can always use the -i flag to describe where our inventory is located at the CLI. However, we can also set a default location within ~/.ansible.cfg. We'll learn more about this config file later, but for now know that it may hold many variable settings which ultimately control how Ansible runs. Check it out:
+
+student@bchd:~$ batcat ~/.ansible.cfg
+
+Notice the settings under the heading [defaults]. These are all globals config changes that modify the way Ansible behaves.
+
+Run Ansible against the group planetexpress
+
+student@bchd:~$ ansible planetexpress -i ~/mycode/inv/dev/hosts -m ansible.builtin.command -a "whoami"
+
+Try again, only this time target fry. No need to specify -m command as that is the default module to use. Also, drop the -i flag, because we set a default inventory location.
+
+student@bchd:~$ ansible fry -a "whoami"
+
+Run help on the Ad-Hoc command to decode what you just did.
+
+student@bchd:~$ ansible --help
+
+Use the help command to answer the following questions:
+
+    What does the -i flag indicate?
+        A: This describes the location of the inventory file.
+    What does the -a flag indicate?
+        A: This implies that the following command in quotes in an argument.
+    Where is planetexpress defined?
+        A: The value "planetexpress" is a group that is defined within the inventory file.
+
+Warning: hosts farnsworth uses password security rather than RSA. This isn't a completely uncommon scenario, so let's learn how to connect to a host using a password. Note: Nearly anytime you are prompted in the labs, alta3 is your password.
+
+student@bchd:~$ ansible farnsworth -i ~/mycode/inv/dev/ -m ansible.builtin.ping --ask-pass
+
+If you ever need a summary of the current inventory 'at a glance', you can use the ansible-inventory command. Try it out now. Create a list of all the inventory files within the ~/mycode/inv/ directory (and sub directories).
+
+student@bchd:~$ ansible-inventory -i ~/mycode/inv/ --list
+
+If you prefer a graph view, you can make that too.
+
+student@bchd:~$ ansible-inventory -i ~/mycode/inv/ --graph
+
+Get all inventory information regarding a single host, fry.
+
+student@bchd:~$ ansible-inventory -i ~/mycode/inv/ --host fry
+
+You can also describe inventories in additional formats, such as YAML. However, we will study this in subsequent labs.
+
+Lab conclusions:
+
+    Setting up static inventory by groups allows flexibility in pre-planning your groups of hosts ahead of time.
+    When setting up our inventory, we should think carefully about how to group the hosts.
+    We learned that using SSH passwords rather than RSA keys causes some annoying edge cases that we just don not want.
+    We learned that using SSH passwords requires keyboard action (for now).
+    Having our inventory organized in groups simplifies Ad-Hoc commands
+    Inventories can take many different formats, where a popular format is INI
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+    cd ~/mycode
+    git status
+    git add /home/student/mycode/*
+    git commit -m "building inventories"
+    git push origin
+    cd ~/
+
+

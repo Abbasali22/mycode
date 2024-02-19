@@ -1,0 +1,234 @@
+Lab Objective
+The objective of this lab is to design a multi-step playbook that can perform some work. We'll start by designing a playbook that might bootstrap the Indy host with the latest version of Python 3.x. Once we have Python3 installed, we can try leveraging some basic Ansible modules that we might explore in greater detail in later labs.
+
+In this lab, you will perform the following tasks:
+
+Demonstrate Ansible Playbook failure when a target host does not have Python3 installed.
+Utilize ad-hoc and playbook Raw module to interact with a host without Python3.
+Develop a multi-task playbook using the Raw, User, and Group module to bootstrap a new user.
+Develop a multi-task playbook using User, and Group modules to remove a user/group.
+Read about the raw module here: https://docs.ansible.com/ansible/latest/modules/raw_module.html
+
+Read about the user module here: https://docs.ansible.com/ansible/latest/modules/user_module.html
+
+Read about the group module here: https://docs.ansible.com/ansible/latest/modules/group_module.html
+
+Procedure
+We'll be using the indy machine for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Ping the new indy host below.
+
+student@bchd:~$ ping -c 1 indy
+
+PING indy (10.10.2.2) 56(84) bytes of data.
+64 bytes from indy (10.10.2.2): icmp_seq=1 ttl=64 time=0.088 ms
+
+--- indy ping statistics ---
+1 packets transmitted, 1 received, 0% packet loss, time 0ms
+rtt min/avg/max/mdev = 0.088/0.088/0.088/0.000 ms
+The setup script also created an inventory for us to use. Check it out.
+
+student@bchd:~$ batcat ~/mycode/inv/dev/hosts
+
+Remember there is also a copy of ~/.ansible.cfg in place, containing some important global configuration values.
+
+student@bchd:~$ batcat ~/.ansible.cfg
+
+SSH to the lab host indy at 10.10.2.2.
+
+student@bchd:~$ ssh indy
+
+Determine if Python 3.x is installed.
+
+indy@indy:~$ python3 --version
+
+In order to demonstrate how we can use Ansible on hosts without Python3 installed, we're going to need to uninstall Python3 from Indy.
+
+The following removes all version of python of any installed version of python. Before running the command, ensure you are on the indy machine
+
+indy@indy:~$ sudo apt autoremove python* -y
+
+Now that this dirty work is completed, Indy (who has a crippling fear of snakes) is finally sequestered from Python. With Python out of the picture, how will Ansible, an application which executes tasks using python, function? Fear not! We'll demonstrate how in this lab.
+
+Before proceeding, let's also make sure that indy is up to date with its packages. When running this step it will take a moment before you see any output.
+
+indy@indy:~$ sudo apt update -y
+
+Exit indy machine.
+
+indy@indy:~$ exit
+
+There's no Python on indy, so the following command will FAIL. Note: The following command says, "use the ping module to target the raiders groups as defined by the inventories found in the directory ~/mycode/inv/dev/"
+
+student@bchd:~$ ansible -m ping raiders -i ~/mycode/inv/dev/
+
+[WARNING]: No python interpreters found for host indy (tried ['python3.11', 'python3.10', 'python3.9', 'python3.8',
+'python3.7', 'python3.6', 'python3.5', '/usr/bin/python3', '/usr/libexec/platform-python', 'python2.7',
+'/usr/bin/python', 'python'])
+indy | FAILED! => {
+    "ansible_facts": {
+        "discovered_interpreter_python": "/usr/bin/python"
+    },
+    "changed": false,
+    "module_stderr": "Shared connection to 10.10.2.2 closed.\r\n",
+    "module_stdout": "/bin/sh: 1: /usr/bin/python: not found\r\n",
+    "msg": "The module failed to execute correctly, you probably need to set the interpreter.\nSee stdout/stderr for the exact error",
+    "rc": 127
+}
+Without Python3 installed, Ansible is not able to run the Python scripts required to perform the play. This means, we're going to have to pursue an alternative method to accomplish the desired task.
+
+Remotely update indy's apt tool
+
+student@bchd:~$ ansible -m raw raiders -i ~/mycode/inv/dev/ -a "apt-get update" -b
+
+Let's try using an ad-hoc raw module to issue the command apt install python-pip -y. Note: The following command says, "Use the raw module to target the group raiders, a group that can be defined by looking to the directory ~/mycode/inv/dev/, and to do this, 'become' sudo." (-b) This should WORK as the raw module does not use Ansible's Python subsystem. It's effectively a plain SSH command.
+
+student@bchd:~$ ansible -m raw raiders -i ~/mycode/inv/dev/ -a "apt install python3-pip -y" -b
+
+This will take about a minute to complete. Do not interrupt the play, and allow ansible to do its job.
+
+With Python3 installed on indy, we can now use the ping module to contact the indy machine.
+
+student@bchd:~$ ansible -m ping raiders -i ~/mycode/inv/dev/
+
+The above command should return a green 'pong' to your 'ping'. Remember, the ping module has nothing to do with ICMP, and in that way, is poorly named. Think of it more as a sanity test that checks if the target host(s) can be contacted via SSH, logged into using the creds provided, and if Python is installed.
+
+Create the following playbook. Notice in the playbook, we still include the raw module, despite having installed Python on the indy machine. This is by design, so you can observe the 'lack of coolness' provided by raw. No matter how many times you run the playbook, the raw module will always execute. This is unlike other modules that only execute if they need to. This 'always issue behavior' is undesirable, as it could lead to unanticipated and unexpected results. A lack of predictability is never a good thing when working with automation!
+
+student@bchd:~$ vim ~/mycode/bootstrap-new-user.yml
+
+---
+- name: bootstrapping and new user
+  hosts: raiders
+  connection: ssh   # default connection method (use OpenSSH)
+  gather_facts: False
+
+  tasks:
+
+  # update the apt catalog
+  - name: "Ensure apt is updated"
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  # install Python with ansible
+  # the raw module will ALWAYS issue your command
+  # no idempotence here!
+  # therefore, use it sparingly!!
+  - name: "Bootstrap python install"
+    ansible.builtin.raw: "apt install -y python3-pip"
+    become: yes
+
+  # create a new group
+  - name: Create the new group sandbox
+    ansible.builtin.group:
+      name: sandbox
+      state: present
+    become: yes
+
+  # create new user on target system
+  - name: Add user 'exampleuser' with group of 'sandbox'
+    ansible.builtin.user:
+      name: exampleuser
+      comment: "Example User"
+      # password: alta3      # pass as hash
+      state: present
+      shell: /bin/bash       # Defaults to /bin/bash
+      system: no             # Defaults to no
+      createhome: yes        # Defaults to yes
+      # home: /home/exampleuser  # Defaults to /home/<username>
+      group: sandbox
+    become: yes            
+Press Esc and then :wq to save and exit.
+
+Try running your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/bootstrap-new-user.yml -i ~/mycode/inv/dev/
+
+If you'd like, you can try running it a few more times as well. Notice that no matter how many times you run the playbook, the raw module always displays a change. That is a reflection of how the raw module is architected; without any Python 'intelligence' to support the raw module, the best the module can offer is an SSH command, which, if nothing else, would be reflected as a state change within your history.
+
+SSH to indy.
+
+student@bchd:~$ ssh indy
+
+Determine if the new user creation playbook was successful.
+
+indy@indy:~$ sudo -i -u exampleuser
+
+The prompt should change to something like exampleuser@indy:/home/indy~$. Change to your home directory:
+
+exampleuser@indy:/home/indy~$ cd
+
+Now print working directory to ensure you are in /home/exampleuser
+
+exampleuser@indy~:$ pwd
+
+It worked. Exit the exampleuser
+
+exampleuser@indy~:$ exit
+
+Exit the indy machine to return to bchd
+
+indy@indy:~$ exit
+
+Let's create a playbook that removes the user and group we just added to indy.
+
+student@bchd:~$ vim ~/mycode/remove-new-user.yml
+
+---
+- name: bootstrapping and new user    # metadata (just a name)
+  hosts: raiders        # use the raiders group to connect
+  connection: ssh       # use openSSH to connect
+  gather_facts: False   # no need to audit targets
+
+  tasks:
+  # Remove the user 'exampleuser'
+  - name: remove a user
+    ansible.builtin.user:
+     name: exampleuser
+     state: absent
+     remove: yes
+    become: yes
+
+  # Remove the group 'sandbox'
+  - name: Remove the group sandbox
+    ansible.builtin.group:
+      name: sandbox
+      state: absent
+    become: yes
+Press Esc and then :wq to save and exit.
+
+Run the script. The inventory defining is defined by the group raiders, which was put in place by the set up script.
+
+student@bchd:~$ ansible-playbook ~/mycode/remove-new-user.yml -i ~/mycode/inv/dev/
+
+SSH into indy and ensure you can no longer switch users to exampleuser
+
+student@bchd:~$ ssh indy
+
+The following command should no longer be successful
+
+indy@indy:~$ sudo -i -u exampleuser
+
+sudo: unknown user exampleuser
+sudo: error initializing audit plugin sudoers_audit
+Escape the indy machine, "No time to argue!"
+
+indy@indy:~$ exit
+
+Conclusions:
+
+Python is required on the target hosts if you want to run anything other than the raw module.
+The raw module is a bit dull, it always registers a change.
+OS agnostic modules user and group can be used to deploy or remove users and groups.
+Some modules contain an absent parameter, which can make roll-backs easier.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "Multistep playbook"
+git push origin
+cd ~/
+

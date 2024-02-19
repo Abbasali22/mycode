@@ -1,0 +1,427 @@
+
+Lab Objective
+The objective of this lab is to become familiar with the primary component of Ansible, known as a "playbook". Playbooks contain your Ansible code, and made of (at least) two sections. These two sections are hosts, and tasks. The hosts are the "who" to run against, whereas the tasks are the "what" you want to do.
+
+It is common practice to design a playbook that describes a host "inventory" as well as variables within external files. This design allows for a more dynamic (reusable) playbook. In this lab, we'll try reading variables from a few different places, and observe how they effect our playbook.
+
+This lab makes use of two hosts. The machine you run your Ansible code (the Ansible controller), and a Linux Ubuntu host, indy. Our goal is to use Ansible to make some changes to host indy.
+
+It isn't true when running Ansible against APIs or network devices, but when using Ansible to configure Linux hosts, we will want Python installed on those hosts. That's because (whenever possible) Ansible wants to push out work to do. The work is blocks of Python code to be executed. The intention is that the Python code will bring our target machine into a desired state (if it isn't already).
+
+In this lab, you will perform the following tasks:
+
+Create a playbook with vars called out as individual key-value pairs.
+Create a playbook with vars called out as a sequence/array.
+Create a vars file, to be imported to a playbook.
+Create a second vars file, to be imported to a playbook which reads two vars files in.
+Create an apt packages vars file to install multiple applications in a playbook.
+Resources:
+
+Ansible Documentation - Understanding Variable Precedence
+Ansible Documentation - ansible.builtin.raw
+Ansible Documentation - ansible.builtin.user
+Ansible Documentation - ansible.builtin.group
+Procedure
+We'll be using the indy machine for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Take a look at the inventory our setup script created. Focus on the raiders group.
+
+student@bchd:~$ batcat ~/mycode/inv/dev/hosts
+
+Try to SSH to the lab host indy. If prompted, the password is alta3
+
+student@bchd:~$ ssh indy
+
+If you're a fan of Indiana Jones, you know Indy is an ophidiophobe (afraid of snakes). So let's do Indy a favor, and uninstall all versions of Python from his system.
+
+indy@indy:~$ sudo apt remove python* -y
+
+Ensure indy has sudo privileges.
+
+indy@indy:~$ sudo whoami
+
+root
+Great! Exit indy machine.
+
+indy@indy:~$ exit
+
+Before we write a playbook, read about a bit of the code we're going to call on. The ansible.builtin.raw module allows Ansible to control a target machines over SSH (no Python). We'll use this module to install Python on indy.
+
+student@bchd:~$ ansible-doc ansible.builtin.raw
+
+Up and down to scroll, q to quit.
+
+We will also use the group module. This requires python be installed on the indy machine first.
+
+student@bchd:~$ ansible-doc ansible.builtin.group
+
+Up and down to scroll, q to quit.
+
+We will also use the user module. This module also requires python be installed on the indy machine first.
+
+student@bchd:~$ ansible-doc ansible.builtin.user
+
+Up and down to scroll, q to quit.
+
+Create a playbook called playbook01.yml. In this playbook we'll hardcode variables directly into our playbook. We can do this with the keyword vars.
+
+student@bchd:~$ vim ~/mycode/playbook01.yml
+
+---
+# Learning about Playbooks
+- name: bootstrapping and new user creation
+  hosts: raiders        # our group in our inventory
+  gather_facts: no
+  connection: ansible.builtin.ssh
+
+  vars:
+    newuser1: marian
+    newuser2: belloq
+    newuser3: willie
+    newuser4: elsa
+
+  tasks:
+  # use the raw module
+  - name: update apt with latest repo info
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  - name: install py3 and pip3 with ansible raw
+    ansible.builtin.raw: "apt install -y python3-pip"
+    become: yes
+
+  - name: create new group
+    ansible.builtin.group:
+      name: indymovies
+      state: present
+    become: yes
+
+  - name: Add newuser1 to target hosts
+    ansible.builtin.user:
+      name: "{{ newuser1 }}"
+      state: present
+      group: indymovies
+    become: yes
+
+  - name: Add newuser2 to target hosts   
+    ansible.builtin.user:
+      name: "{{ newuser2 }}"
+      state: present
+      group: indymovies
+    become: yes
+
+  - name: add newuser3 to target hosts
+    ansible.builtin.user:
+      name: "{{ newuser3 }}"
+      state: present
+      group: indymovies
+    become: yes
+
+  - name: add newuser4 to target hosts
+    ansible.builtin.user:
+      name: "{{ newuser4 }}"
+      state: present
+      group: indymovies
+    become: yes
+To save and quit out of vim, press ESC and then type :wq.
+
+Exciting times! Run your Ansible playbook. Be sure to include the inventory flag to point to your inventory (jones).
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook01.yml -i ~/mycode/inv/dev/
+
+All that yellow on the screen means Ansible modified the state of the target machine. Test to see if everything worked by SSHing to the host indy.
+
+student@bchd:~$ ssh indy
+
+Determine if the new user creation playbook was successful. If it was, we should be able to switch to one of the new users, such as marian.
+
+indy@indy:~$ sudo -i -u marian
+
+Issue whoami, the result should be marian, confirming our new user was created.
+
+$ whoami
+
+Exit back to the indy account.
+
+$ exit
+
+If you'd like, switch to one (or more) of the new users such as belloq, willie, or elsa.
+
+Exit the indy machine to return to the Ansible controller.
+
+indy@indy:~$ exit
+
+Great! Next, let's clean up that last playbook with the keyword loop. Loop will allow us to loop across our data, if we just present it in a slightly different manner. Create the playbook playbook01loop.yml
+
+student@bchd:~$ vim ~/mycode/playbook01loop.yml
+
+---
+- name: bootstrapping and new user creation
+  hosts: raiders
+  gather_facts: no
+  connection: ansible.builtin.ssh
+
+  vars:
+    newusers:
+    - marian
+    - belloq
+    - willie
+    - elsa
+
+  tasks:
+  - name: update apt with latest repo info
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  - name: install py3 and pip3 with ansible raw
+    ansible.builtin.raw: "apt install -y python3-pip"
+    become: yes
+
+  - name: create new group
+    ansible.builtin.group:
+      name: indymovies
+      state: present
+    become: yes
+
+  - name: Add newusers to target hosts
+    ansible.builtin.user:
+      name: "{{ item }}"
+      state: present
+      group: indymovies
+    become: yes
+    loop: "{{ newusers }}"
+To save and quit out of vim, press ESC and then type :wq.
+
+Run your code.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook01loop.yml -i ~/mycode/inv/dev/
+
+Notice in the play recap, that our 7 tasks were reduced to 4. That's because a single task is looping, and in effect, turned 4 tasks into a single task. Let's try the same thing, only move our data into a variable file. This can be done with vars_files. To start, we'll create our variable file. Stay organized. Create a folder ~ans/vars/ that we can use to stash our vars files in.
+
+student@bchd:~$ mkdir -p ~/mycode/vars/
+
+Create a yaml file to establish variables from a file. Make your file look like the following. This is YAML syntax for a simple list. One of the benefits of mapping data in external files, is we can offer users of the playbook an editable file, without actually requiring them to edit the playbook itself.
+
+student@bchd:~$ vim ~/mycode/vars/newusers1.yml
+
+---
+users1:
+  - marian
+  - belloq
+  - willie
+  - elsa
+To save and quit out of vim, press ESC and then type :wq.
+
+Create a playbook file called ~/mycode/playbook01filesloop.yml. You may remember making one similar to this one previously. This time, we will map the new users to be created in external files.
+
+student@bchd:~$ vim ~/mycode/playbook01filesloop.yml
+
+---
+- name: bootstrapping and new user
+  hosts: raiders
+  gather_facts: no
+  connection: ansible.builtin.ssh
+
+  # vars_files expects a list of 1 or more files
+  vars_files:
+    - vars/newusers1.yml
+
+  tasks:
+  # update the apt catalog
+  - name: "update apt with latest repo info"
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  # install Python3 and pip3 with ansible
+  - name: "Bootstrap python install"
+    ansible.builtin.raw: "apt install -y python3-pip"
+    become: yes
+
+  # create a new group
+  - name: Create the new group sandbox
+    ansible.builtin.group:
+      name: sandbox
+      state: present
+    become: yes
+
+  # create new user on target system
+  - name: Add new users to group 'sandbox'
+    ansible.builtin.user:
+      name: "{{ item }}"
+      comment: throwaway user account for testing
+      state: present
+      shell: /bin/bash       # Defaults to /bin/bash
+      system: no             # Defaults to no
+      createhome: yes        # Defaults to yes
+      group: sandbox
+    become: yes
+    loop: "{{ users1 }}"
+To save and quit out of vim, press ESC and then type :wq.
+
+Run your code.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook01filesloop.yml -i ~/mycode/inv/dev/
+
+Suppose we wanted to loop across multiple pieces of data stored in separate files. To learn this technique, create your second yaml file. Make your second file look like the following. Again, this is syntax for a simple list.
+
+student@bchd:~$ vim ~/mycode/vars/newusers2.yml
+
+---
+users2:
+  - walter
+  - jonessr
+  - laoche
+To save and quit out of vim, press ESC and then type :wq.
+
+Create a playbook that can loop across both data structures. At the top of the playbook we describe two files within vars_files, and then we also use the plus sign to combine our two lists, user1 and users2 within the jinja syntax.
+
+student@bchd:~$ vim ~/mycode/bootstrap-varsfiles.yml
+
+---
+- name: bootstrapping and new user
+  hosts: raiders
+  gather_facts: no
+
+  # vars_files expects a list of 1 or more files
+  vars_files:
+    - vars/newusers1.yml
+    - vars/newusers2.yml
+
+  tasks:
+  # update the apt catalog
+  - name: "update apt with latest repo info"
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  # install Python3 and pip3 with ansible
+  - name: "Bootstrap python install"
+    ansible.builtin.raw: "apt install -y python3-pip"
+    become: yes
+
+  # create a new group
+  - name: Create the new group sandbox
+    ansible.builtin.group:
+      name: sandbox
+      state: present
+    become: yes
+
+  # create new user on target system
+  - name: Add new users to group 'sandbox'
+    ansible.builtin.user:
+      name: "{{ item }}"
+      comment: throwaway user account for testing
+      state: present
+      shell: /bin/bash       # Defaults to /bin/bash
+      system: no             # Defaults to no
+      createhome: yes        # Defaults to yes
+      group: sandbox
+    become: yes
+    loop: "{{ users1 + users2 }}"
+    ## notice how we combine two separate lists with the above technique
+To save and quit out of vim, press ESC and then type :wq.
+
+Try running your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/bootstrap-varsfiles.yml -i ~/mycode/inv/dev/
+
+Make sure everything is still working. SSH to indy.
+
+student@bchd:~$ ssh indy
+
+Determine if the new user creation playbook was successful. Switch to one (or more) of the new users.
+
+indy@indy:~$ sudo -i -u marian
+
+Exit back to the indy account.
+
+marian@indy:/home/indy/$ exit
+
+Exit the indy machine.
+
+indy@indy:~$ exit
+
+We can continue to practice working with vars_files and loop. This time, let's describe packages that need installed on the indy system. Create the following YAML file in which to store our variable data.
+
+student@bchd:~$ vim ~/mycode/vars/aptpkgs.yml
+
+---
+# aptpkgs.yml
+bootstrap_packages:
+ - python3
+ - aptitude
+
+apt_pkgs:
+ - iputils-ping
+ - cowsay
+ - sl
+ - cmatrix
+To save and quit out of vim, press ESC and then type :wq.
+
+Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/playbook01files02.yml
+
+---
+- name: Loop over packages to install
+  hosts: raiders
+  gather_facts: yes
+
+  vars_files:
+  - vars/aptpkgs.yml
+
+  tasks:
+  ## upgrade apt with latest repo info
+  - name: "update apt"
+    ansible.builtin.raw: "apt update -y"
+    become: yes
+
+  ## ensure python3 is installed on indy
+  - name: "Bootstrap python3 install"
+    ansible.builtin.raw: "apt install -y {{ item }}"
+    loop: "{{ bootstrap_packages }}"
+    become: yes
+
+  ## use the apt module to deploy apps
+  - name: "Apt install packages"
+    ansible.builtin.apt:
+      name: "{{ apt_pkgs }}"
+    become: yes
+To save and quit out of vim, press ESC and then type :wq.
+
+Run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook01files02.yml -i ~/mycode/inv/dev/
+
+It make take awhile for this playbook to finish. Ansible is taking control of the apt package manager, and installing Now let's connect to the remote host with SSH.
+
+student@bchd:~$ ssh indy
+
+Try out the newly installed applications. Try out the popular Linux application Cow Say.
+
+indy@indy:~$ cowsay "alta3 is great"
+
+Try out steam locomotive.
+
+indy@indy:~$ sl
+
+Try out cmatrix.
+
+indy@indy:~$ cmatrix -s
+
+-s: "Screensaver" mode, exits on first keystroke
+
+Exit from the ssh session.
+
+indy@indy:~$ exit
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "Variable files"
+git push origin
+cd ~/
+ 

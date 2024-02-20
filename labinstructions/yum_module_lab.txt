@@ -1,0 +1,162 @@
+
+Lab Objective
+The objective of this lab is to understand how to leverage use of the ansible.builtin.yum module, as well as selective execution of tasks, with the when keyword. The yum tool is a package manager that allows access to free software (like the Apple Store or Google Play store).
+
+In this lab, you'll use CentOS, and yum, to install Extra Packages for Enterprise Linux (or EPEL) which is a high quality set of additional packages for Enterprise Linux. Per the website,
+
+"EPEL packages are usually based on their Fedora counterparts and will never conflict with or replace packages in the base Enterprise Linux distributions. EPEL uses much of the same infrastructure as Fedora, including buildsystem, bugzilla instance, updates manager, mirror manager and more."
+
+In short, CentOS is a free RedHat clone, and by linking yum to EPEL, we have access to many of the same software packages as we would need to pay to gain access to on a native RedHat system. Understand, we'll issue all of our commands from bchd, which is an Ubuntu machine.
+
+In this lab, you will perform the following tasks:
+
+Create an Ansible Playbook that will utilize the yum module to install an application.
+Create an Ansible Playbook with when conditionals to specifically target the apt and yum modules to their appropriate targets.
+Create an Ansible Playbook to install EPEL release and another application using yum on a CentOS machine.
+Resources:
+
+Ansible Documentation - ansible.builtin.yum
+Extra Packages for Enterprise Linux (EPEL)
+GitHub - Ansible - Values of DISTRIBUTION and OS_FAMILY
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+If you haven't already, read about the documentation on the yum module.
+
+student@bchd:~$ ansible-doc yum
+
+Scroll up and down with the arrow keys, press q to quit.
+
+Create a basic playbook file called ~/mycode/playbook-yum.yml using the yum package installer for CentOS..
+
+student@bchd:~$ vim ~/mycode/playbook-yum.yml
+
+---
+- name: Install sl with yum
+  hosts: planetexpress
+  connection: ansible.builtin.ssh
+
+  tasks:
+
+    - name: Install steam locomotive with yum
+      ansible.builtin.yum:
+        name: sl     # name of the package to install
+        state: present
+      become: yes # run as sudo
+To save and quit out of vim, press ESC and then type :wq.
+
+Next run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-yum.yml
+
+We should have one success on farnsworth, as he is a CentOS RedHat machine and using the yum package install utility. The other hosts are running Ubuntu which use the apt package installer.
+
+Connect to farnsworth with secure shell to see the change we made.
+
+student@bchd:~$ ssh farnsworth
+
+Try out the newly installed application.
+
+[farnsworth@farnsworth ~] sl
+
+Choo-Choo! Turns out sl is short for steam locomotive. Exit from the ssh session.
+
+[farnsworth@farnsworth ~] exit
+
+The best 'fix' we can apply to our playbook is to use a when statement. We could also augment our playbook to include an apt module, to install sl on the other Ubuntu based machines. Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-yum2.yml
+
+---
+- name: Our first play
+  hosts: planetexpress
+  gather_facts: yes # runs by default
+  connection: ansible.builtin.ssh
+
+  tasks:
+
+    - name: Install steam locomotive on CentOS machines
+      ansible.builtin.yum:
+        name: sl
+        state: present
+      become: yes # run as sudo
+      when: ansible_distribution == "CentOS"
+
+    - name: Install steam locomotive on Ubuntu machines
+      ansible.builtin.apt:
+        name: sl
+        state: present
+      become: yes # run as sudo
+      when: ansible_distribution == "Ubuntu"
+To save and quit out of vim, press ESC and then type :wq.
+
+The variable ansible_distribution is defined when the gather_facts (aka setup) module runs. If a host is found to have an CentOS distribution, than the yum task will run. However, if the ansible_distribution is found to be Ubuntu, the apt package installer will run.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-yum2.yml
+
+The playbook should execute on all hosts, however the yum task should only execute on the farnsworth host, and the apt task on the remaining hosts.
+
+Create another basic playbook file called playbook-yum3.yml. This one shows a fairly practical step, which is installing the, "Extra Packages for Enterprise Linux". You can read about that project here, https://fedoraproject.org/wiki/EPEL however, the TLDR is, when you use CentOS in place of RHEL, you don't have access to the RHEL repositories. the EPEL serves as a replacement for these, 'pay to access' software repositories.
+
+student@bchd:~$ vim ~/mycode/playbook-yum3.yml
+
+Create the following:
+
+---
+- name: Install EPEL libraries in YUM
+  hosts: planetexpress
+  become: yes # run entire playbook with sudo
+  connection: ansible.builtin.ssh
+
+  tasks:
+   - name: "Install epel-release"
+     ansible.builtin.yum:
+       name: epel-release
+       state: present
+     when: ansible_distribution == "CentOS"
+
+   - name: "Update yum repos and Install package X"
+     ansible.builtin.yum:
+       update_cache: True
+       name:
+           - fail2ban
+           - moon-buggy
+       state: latest
+     when: ansible_distribution == "CentOS"
+To save and quit out of vim, press ESC and then type :wq. Notice we also are installing a list of applications: fail2ban and moon-buggy. The former is an application that prevents users from SSHing to a box if they fail the SSH authentication "X" number of times. The second application, moon-buggy, is a game. Using a list of applications with the yum module (as well as the apt module) is actually preferred (as it is more efficient) over using a loop operation.
+
+Next, run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-yum3.yml
+
+Now let's connect to the remote host with secure shell to see the change we made.
+
+student@bchd:~$ ssh farnsworth
+
+Verify the newly installed application, moon-buggy.
+
+[farnsworth@farnsworth ~]$ moon-buggy
+
+Press q, or CTRL+C to quit.
+
+Exit from the ssh session.
+
+[farnsworth@farnsworth ~]$ exit
+
+Answer the following questions:
+
+Q: What is yum?
+A: This is the package installer for RedHat based Linux hosts. Think of it like the Windows Store application or iTunes store application. It allows an admin to install software (apps).
+Q: What if I use a non-RedHat based Linux system?
+A: Ansible also has a "apt", "pk5", and "package" module (among others). You would select the module that is able to control the package manager on your target infrastructure.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "Using yum module"
+git push origin
+cd ~/
+

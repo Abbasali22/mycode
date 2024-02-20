@@ -1,0 +1,155 @@
+Lab Objective
+The objective of this lab is to demonstrate two modules, the shell Ansible module, as well as the file module.
+
+The shell module takes the command name followed by a list of space-delimited arguments. It is almost exactly like the command module but runs the command through a shell /bin/sh on the remote node.
+
+The file module sets attributes of files, symlinks or directories, alternatively, it removes files symlinks or directories.
+
+In this lab, you will perform the following tasks:
+
+Use the file module to make a directory in an Ansible Playbook.
+Use the shell module to run a command outputing text to a file.
+Documentation on the shell module can be found here:
+https://docs.ansible.com/ansible/latest/collections/ansible/builtin/shell_module.html
+
+Documentation on the file module can be found here:
+https://docs.ansible.com/ansible/latest/modules/file_module.html
+
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Read about the documentation on the file module.
+
+student@bchd:~$ ansible-doc ansible.builtin.file
+
+Scroll up and down with the arrow keys, press q to quit.
+
+Create a basic playbook file called playbook-fileshell.yml
+
+student@bchd:~$ vim ~/mycode/playbook-fileshell.yml
+
+---
+- name: A simple file playbook
+  hosts: planetexpress
+  gather_facts: yes
+  connection: ansible.builtin.ssh
+
+  tasks:
+   - name: make a directory
+     ansible.builtin.file:
+       path: ~/output/
+       state: directory
+To save and quit out of vim, press ESC and then type :wq.
+
+Save and exit.
+
+student@bchd:~$ batcat ~/mycode/playbook-fileshell.yml
+
+Next run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-fileshell.yml -i ~/mycode/inv/dev/hosts
+
+Now let's connect to the remote hosts with secure shell and run an ls command to see if the ~/output/ directory exists.
+
+student@bchd:~$ ssh bender
+
+Determine if the directory was created.
+
+bender@bender:~$ ls
+
+output
+Now exit.
+
+bender@bender:~$ exit
+
+Read about the documentation on the shell module.
+
+student@bchd:~$ ansible-doc ansible.builtin.shell
+
+Scroll up and down with the arrow keys, press q to quit.
+
+Check the other machines if you'd like. When you're satisfied it worked, edit the playbook once again. Below we add the shell module which, unlike the command module, allows for wildcards, such as < | > & << >>.
+
+student@bchd:~$ vim ~/mycode/playbook-fileshell.yml
+
+---
+- name: A simple file playbook
+  hosts: planetexpress
+  gather_facts: yes
+  connection: ansible.builtin.ssh
+
+  tasks:
+   - name: make a directory
+     ansible.builtin.file:
+       path: ~/output/
+       state: directory
+
+   - name: use shell module with wildcarding
+     ansible.builtin.shell: echo $HOME >> ~/output/path.txt
+To save and quit out of vim, press ESC and then type :wq. The shell command we added will take the contents of $HOME and push the contents into ~/output/path.txt. In this example, the wildcard is the >>. This will not work if you try it with the command module.
+
+Run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-fileshell.yml -i ~/mycode/inv/dev/hosts
+
+Now let's connect to the remote hosts with secure shell and see if our file appeared.
+
+student@bchd:~$ ssh bender@10.10.2.3
+
+Determine if the file in the directory was created.
+
+bender@bender:~$ cat ~/output/path.txt
+
+The output should look like the following:
+
+/home/bender/
+The environmental variable is pretty standard on most operating systems. It should reflect the home directory of the current user. Exit the current machine.
+
+bender@bender:~$ exit
+
+Answer the following questions:
+
+Q: What's the difference between the shell and command modules?
+A: The shell module issues the command through a shell, and therefore understands wildcards. Shells can be "tweaked" (customized), which can lead to unpredictable results. Therefore, the shell module should be avoided.
+Q: How else could we copy an ENV value like $HOME into a file?
+A: Ansible has a tool called a 'lookup plugin'. This allows the lookup of many types of data, including environmental variables.
+The following challenge is optional. If you are not interested in performing it, you may skip to the end of the lab.
+
+CHALLENGE 01 (OPTIONAL - DIFFICULT) - When starting out, you'll often find yourself reaching for raw, shell, and the command modules. However, they are often not necessary. Try rewriting the above playbook using the copy module and to achieve the same result, but without invoking the shell module. Note: We have not yet studied using copy, you'll need to look ahead or do some googling if you want to complete this challenge exercise.
+
+**CHALLENGE 01 (SOLUTION)** - The following is a solution to the above challenge. Unlike using the shell module, this solution retains idempotenece. We will study the "copy" module in greater detail later.
+---
+- name: Copy environmental var value into a file without use of shell module
+  hosts: planetexpress   # defined in inventory
+  gather_facts: yes
+  connection: ansible.builtin.ssh
+
+  tasks:
+
+   - name: make a directory
+     ansible.builtin.file:
+       path: ~/output/
+       state: directory
+
+  # NOT idempotent (will run every time)
+  #- name: use shell module with wildcarding
+  #  ansible.builtin.shell: echo $HOME >> ~/output/path.txt
+
+  # idempotent solution
+   - name: use copy to avoid using a shell command
+     ansible.builtin.copy:
+       content: "{{ ansible_env.HOME }}"           # this retrieves env info from gathered facts ("left side" of the shell command)
+       dest: ~/output/path.txt                     # ("right side" of the shell command)
+       force: yes                                  # always overwrite the file if the content is different
+Details
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "Working with shell"
+git push origin
+cd ~/
+

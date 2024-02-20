@@ -1,0 +1,136 @@
+Lab Objective
+The objective of this lab is to demonstrate the Ansible ansible.builtin.apt module. The apt module allows Ansible to connect to the remote hosts and leverage control of (preferably) aptitude, or alternative, apt-get. Both of these tools are software management tools, just like ansible.builtin.yum, or the Google Play Store. These applications allow the installation of fully compiled software, and dependencies, on remote hosts.
+
+Use of aptitude and apt-get are generally restricted to Debian machines. This will cause issues, as the host Farnsworth is a CentOS RedHat machine, which expects to leverage the use of yum to deploy software.
+
+To control for this problem, we will leverage use of a variable defined by the gather_facts module known as ansible_distribution. The value of ansible_distribution resolves to the OS of the remote host. More information, including a list of possible values, can be found in the links below.
+
+In this lab, you will perform the following tasks:
+
+Create an Ansible Playbook to install an application on target hosts from a given inventory.
+Create an Ansible Playbook which omits a specific host from the playbook.
+Create an Ansible Playbook with a when condition, to target hosts with particular parameters.
+Resources:
+
+Ansible Documentation - ansible_distribution
+Ansible Module - ansible.builtin.apt
+GitHub - Ansible - Values of DISTRIBUTION and OS_FAMILY
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+If you haven't already, read about the documentation on the apt module.
+
+student@bchd:~$ ansible-doc ansible.builtin.apt
+
+Any modules in the "ansible.builtin" collection are installed with Ansible.
+
+Scroll up and down with the arrow keys, press q to quit.
+
+Create a basic playbook file called ~/mycode/playbook-apt02.yml which will install an application called sl.
+
+student@bchd:~$ vim ~/mycode/playbook-apt02.yml
+
+---
+- name: Our first play
+  hosts: planetexpress
+  connection: ansible.builtin.ssh   # default is ssh
+  gather_facts: true # runs by default
+  
+  tasks:
+
+    - name: Install steam locomotive on ALL machines
+      ansible.builtin.apt:
+        name: sl
+        state: present
+      become: yes # run as sudo
+Save by pressing Esc and then type :wq
+
+Run the playbook you just created.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-apt02.yml
+
+Looks like we have a failure. The host farnsworth has CentOS installed instead of Ubuntu which is not a Debian machine. Instead, it expects us to use the yum package installed.
+
+Connect to the one of the remote hosts with secure shell to see the change we made.
+
+student@bchd:~$ ssh fry
+
+Try out the newly installed application.
+
+fry@fry:~$ sl
+
+Choo-Choo! Turns out sl is short for steam locomotive. Exit from the ssh session.
+
+fry@fry:~$ exit
+
+We can take a few approaches in how we 'fix' our failing farnsworth. The first might be just to remove it from the host description. We can do that by altering how we describe our hosts. Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-apt03.yml
+
+---
+- name: Our first play
+  hosts: planetexpress:!farnsworth
+  connection: ansible.builtin.ssh   # default is ansible.builtin.ssh
+  gather_facts: true # runs by default
+  
+  tasks:
+
+    - name: Install steam locomotive on ALL machines
+      ansible.builtin.apt:
+        name: sl
+        state: present
+      become: yes # run as sudo
+Save by pressing Esc and then type :wq
+
+Run the new playbook. This one runs on all hosts in the planetexpress group EXCEPT for farnsworth. This method works, but only if we know in advance that the host farnsworth has an unique host OS.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-apt03.yml
+
+There is another method we could try, which is using a when condition. We can reach for when if we'd like to construct a conditional. One caveat is that when working within the when line it is not necessary to use the double {{ var }} technique for calling on variables. Run the following command to reveal a difference between the host farnsworth and the rest of the crew:
+
+student@bchd:~$ ansible planetexpress -m setup -a "filter=ansible_distribution"
+
+Looks like farnsworth has a value of CentOS for ansible_distribution, whereas the others have Ubuntu. Perfect! Create a new playbook utilizing the when conditional.
+
+student@bchd:~$ vim ~/mycode/playbook-apt04.yml
+
+---
+- name: Our first play
+  hosts: planetexpress 
+  connection: ansible.builtin.ssh   # default is ssh
+  gather_facts: true # runs by default
+
+  tasks:
+
+    - name: Install steam locomotive on ALL machines
+      ansible.builtin.apt:
+        name: sl
+        state: present
+      become: yes # run as sudo
+      when: ansible_distribution == "Ubuntu"
+Save by pressing Esc and then type :wq
+
+The variable ansible_distribution is defined when the gather_facts (aka setup) module runs. If a host is found to have an Ubuntu distribution, than the task will run. However, it will not run if the host is a CentOS RedHat machine (such as host farnsworth). Many of the possible values of ansible_distribution may be found here: https://docs.ansible.com/ansible/latest/user_guide/playbooks_conditionals.html#ansible-distribution
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-apt04.yml
+
+Note the blue text: skipping: [farnsworth] -- farnsworth was skipped because it did not match the ansibe_distribution == "Ubuntu" parameter.
+
+Answer the following questions:
+
+Q: What is apt?
+A: This is short for aptitude. This is the package installer for Ubuntu and Debian based Linux hosts. Think of it like the Windows Store application or iTunes store application. It allows an admin to install software (apps).
+Q: What if I use a non-Debian or non-Ubuntu Linux system?
+A: Ansible also has a "yum", "pk5", and "package" module (among others). You would select the module that is able to control the package manager on your target infrastructure.
+Great job! You have completed this lab.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "Working with apt"
+git push origin
+cd ~/

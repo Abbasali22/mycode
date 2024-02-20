@@ -1,0 +1,189 @@
+Lab Objective
+In this lab, you'll work with the debug module, variable recall, loops, and YAML lists. The debug module allows us to print to the screen. Recalling variables is useful, as it allows us to make playbooks more dynamic and reusable. Ansible enables the creation of loops, which allows for writing less code. At this time, Ansible would like you to begin updating the old keyword for creating loops, with_*, typically with_items, to the new keyword loop.
+
+A YAML list is simply a method of expressing a series of 'things'; no different than the grocery list you create before you go shopping.
+
+Resources:
+
+YAML v1.2.2
+Ansible Documentation - Playbook keywords
+Ansible Documentation - Looping
+Procedure
+We'll run a few playbooks against our localhost, so no need to set anything up in this lab.
+
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+Let's begin by making a directory to work in.
+
+student@bchd:~$ mkdir -p ~/mycode/
+
+Use vim to create a new playbook called, ~/mycode/playbook-loop01.yml
+
+student@bchd:~$ vim ~/mycode/playbook-loop01.yml
+
+Create the following playbook. The code below invokes the Ansible debug module, which allows us to print a message to the screen. The name 'debug' was deliberately chosen over something like, 'print'. The reason is that Ansible is for placing state on target machines, not for displaying output on the screen. However, sometimes it is critical to run a playbook, and get eyes on the current value of a variable during design or refinement (debugging) stages of playbook creation.
+
+---
+- name: Intro to looping
+  hosts: localhost
+  connection: ansible.builtin.local
+  gather_facts: false   # default is 'true'
+
+  vars:   # vars available to all tasks
+    ethList:
+      - "eth0"
+      - "eth1"
+      - "eth2"
+      - "eth3"
+
+  tasks:
+    - name: Demo a tiny loop
+      ansible.builtin.debug:
+        # item is always the var mapped to loop
+        msg: "The debug module allows us to display to the screen: {{ item }}"
+      loop: "{{ ethList }}"
+
+    - name: Demo a second tiny loop
+      ansible.builtin.debug:
+        # item is always the var mapped to loop
+        msg: "All modules can also have LOCAL var information: {{ item }}"
+      loop: "{{ myOtherList }}"
+      vars:
+        myOtherList:
+          - "192.168.70.1"
+          - "10.10.1.1"
+To save and exit, press Esc and then type :wq
+
+Run the playbook. It will only execute against our localhost (controller). We are not connecting to any remote hosts with this playbook, therefore, we do not need to describe an inventory file.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop01.yml
+
+Examine the results of the playbook. Take note on how the loops caused the debug modules to run multiple times.
+
+Variables can be mapped in external files, and users may even be prompted for variables at runtime. For now, let's explore a concept called, "Extra Variables". Before we go any further, check out this list: https://docs.ansible.com/ansible/latest/user_guide/playbooks_variables.html#variable-precedence-where-should-i-put-a-variable revealing that, 'extra variables' get highest precedence.
+
+Warning The following command will fail. Even so, issue below command, and remap the value of ethList via an extra variable assignment at the CLI.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop01.yml -e ethList=["1.1.1.1", "2.2.2.2"]
+
+Hmm, it looks like that caused an error! When passing complex variables, such as arrays or dictionaries, it may be wise to pass them in a file. That's because variable passed at the CLI is interpreted as text-strings. That is to say, our square-brackets are not being recognized. Try creating an extra file where we can remap ethList.
+
+Create a new directory where we can store our variable information. Remember, it pays to stay organized.
+
+student@bchd:~$ mkdir -p ~/mycode/vars/
+
+Now create our variable file.
+
+student@bchd:~$ vim ~/mycode/vars/pblist01.json
+
+Add the below code to the file.
+
+{"ethList":["1.1.1.1","2.2.2.2"]}
+To save and exit, press Esc and then type :wq
+
+Now try rerunning the command. The @ is required when referencing an extra-vars file containing json or yaml
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop01.yml --extra-vars "@~/mycode/vars/pblist01.json"
+
+On this run of the playbook, the value of ethList should be over-ridden by the list items 1.1.1.1 and 2.2.2.2.
+
+Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-loop02.yml
+
+Sometimes it is important to 'pause' a loop between cycles (sometimes useful when troubleshooting racing conditions in network gear and clouds). To control time (in seconds) between execution of each item in a task loop, use the pause directive with loop_control. As the name implies, loop_control provides finer management control when working with loops.
+
+Create a new playbook.
+
+- name: Loop with 3 second pause between runs
+  hosts: localhost
+  connection: ansible.builtin.local
+  gather_facts: no
+
+  tasks:
+
+  - name: Run a debug with 3 second pauses
+    ansible.builtin.debug:
+        var: item
+    loop:
+      - server1
+      - server2
+      - server3
+      - server4
+    loop_control:
+      pause: 3  # in seconds
+To save and exit, press Esc and then type :wq
+
+Run the new playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop02.yml
+
+Create a new playbook, `~/mycode/playbook-loop03.yml'
+
+student@bchd:~$ vim ~/mycode/playbook-loop03.yml
+
+Sometimes you will want to work across more complex data structure, like a list of dictionaries. In those cases, simply use item.key, where key is replaced by the key from the dictionary you are referencing. To practice this, make your playbook look like the following:
+
+- name: Working with simple dictionaries
+  hosts: localhost
+  connection: ansible.builtin.local
+  gather_facts: no
+
+  tasks:
+
+  - name: Loop across complex data structures
+    ansible.builtin.debug:
+      msg: "{{ item.name }} belongs in the {{ item.groups }} aisle"
+    loop:
+      - { name: 'orange', groups: 'fruit' }
+      - { name: 'lemon', groups: 'fruit' }
+      - { name: 'cookie', groups: 'snack' }
+      - { name: 'carrot', groups: 'vegetable' }
+To save and exit, press Esc and then type :wq
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop03.yml
+
+Create a new playbook, ~/mycode/playbook-loop04.yml
+
+student@bchd:~$ vim ~/mycode/playbook-loop04.yml
+
+In this playbook, we'll examine the, 'old' style of looping called, with_items. At the time of writing, this is still supported, but will soon be deprecated (begin to lose favor). Therefore, you should not be writing any new playbooks with this keyword, but still need to understand what it does.
+
+---
+ - name: Looping old-style with_items
+   hosts: localhost
+   connection: ansible.builtin.local  # default is ssh
+   gather_facts: no
+
+   tasks:
+    - name: "Learning about the debug module"
+      ansible.builtin.debug:
+        msg: "Debug module allows us to print to the screen --> {{ item }}"
+      with_items:
+      - "255.255.255.0"
+      - "192.168.0.1"
+      - "192.168.0.2"
+To save and exit, press Esc and then type :wq
+
+Run the new playbook. It should work very similarly to the last playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-loop04.yml
+
+Ansible playbooks are written (coded) using keywords. A list of Ansible keywords can be found here: https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html
+
+Answer the following questions:
+
+Q: What are the play-level keywords being used here?
+A: name, hosts, gather_facts, tasks
+Q: How did you know these were play keywords?
+A: Because I reviewed and bookmarked the playbook keywords link in the previous step.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "loops and lists"
+git push origin
+cd ~/

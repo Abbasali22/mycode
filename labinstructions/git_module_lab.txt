@@ -1,0 +1,81 @@
+Lab Objective
+The objective of this lab is to demonstrate another useful module, git. This module can be used to work with the git tool, and as such, has a pre-requisite, which is that the git utility is installed on the hosts executing the Ansible code.
+
+If you've forgotten, Ansible works by connecting to machines, and then moving Python code to those machines to execute. In most cases, the machines executing python code would be your 'remote hosts'.
+
+In this lab, you will perform the following tasks:
+
+Create an Ansible Playbook which fetches a GitHub archive and copy it to targetted hosts.
+Resources:
+
+Ansible Documentation - ansible.builtin.git
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+If you haven't already, read about the documentation on the git module.
+
+student@bchd:~$ ansible-doc ansible.builtin.git
+
+Scroll up and down with the arrow keys, press q to quit.
+
+Create a basic playbook file called modulegit.yml which uses the git module which fetches a git archive and copies it to /tmp/ansible-examples.zip.
+
+student@bchd:~$ vim ~/mycode/modulegit.yml
+
+---
+- name: Learning how to use git
+  hosts: planetexpress
+  connection: ansible.builtin.ssh
+  gather_facts: false
+
+  tasks:
+
+  - name: "Create a git archive from a repository"
+    ansible.builtin.git:
+        repo: https://github.com/ansible/ansible-examples.git  # this is the repo to be cloned
+        dest: ~/ansible-examples/            # clone to this location on the remote systems
+        archive: /tmp/ansible-examples.zip   # also place a copy of the archive in this location as a ZIP 
+To save and quit out of vim, press ESC and then type :wq.
+
+Run your playbook. In this example, we'll just point to the inventory directory. Ansible will scan the entire directory for files containing an entry for planetexpress
+
+student@bchd:~$ ansible-playbook ~/mycode/modulegit.yml -i ~/mycode/inv/dev/
+
+Now let's connect to the remote hosts with secure shell to see the repository and archive we brought down.
+
+student@bchd:~$ ssh bender
+
+Display the new repo on the bender machine.
+
+bender@bender:~$ ls ~/ansible-examples/
+
+README.md         lamp_simple        mongodb                  tomcat-memcached-failover  wordpress-nginx
+jboss-standalone  lamp_simple_rhel7  phillips_hue             tomcat-standalone          wordpress-nginx_rhel7
+lamp_haproxy      language_features  rust-module-hello-world  windows
+Cool. So the directory ansible-examples was even created for us. This doesn't always happen with Ansible. Typically, if a folder does not exist, the playbook will encounter a failure. To create directories, use the file module.
+
+Exit the bender machine.
+
+bender@bender:~$ exit
+
+Takeaways are as follows:
+
+The git module can be used to interact with the git software tool
+The git tool is required to be installed on the hosts executing the Ansible git module (remote hosts)
+The git module creates the directory if it does not already exist.
+Answer the following questions:
+
+Q: What is the application for the git module?
+A: To check out code from a repository like GitHub, GitLab, or BitBucket.
+Q: Does this module let me create git commits? Or just clone code?
+A: Just clone code. The process of creating a commit SHOULD involve attention to any warning messages that may pop-up, as well as writing a detailed message of why you are creating the commit. In short, git commits are not a process that should be fully automated.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "the git module"
+git push origin
+cd ~/

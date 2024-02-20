@@ -1,0 +1,12 @@
+---
+- name: Pushing to GIT with playbook
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+  - name: "Add/commit/push to GIT"
+    ansible.builtin.git:
+      repo: https://github.com/Abbasali22/mycode
+      : 

@@ -1,0 +1,127 @@
+Lab Objective
+Sometimes our goal isn't to produce a new file, but edit a file that already exists. In this lab, we'll use Ansible to edit single, and multiple lines of a file.
+
+In this lab, you will perform the following tasks:
+
+Create an Ansible Playbook utilizing the lineinfile module to replace the first occurence of a given pattern with new content on a target host.
+Create an Ansible Playbook utilizing the replace module to replace every occurence of a given pattern with new content on a target host.
+This lab will be aided by an understanding of regular expression (regex), a pattern matching notation. Alta3 Research has a great color regex cheat sheet for download at this location: https://alta3.com/posters/regex.pdf
+
+Resources:
+
+Ansible Documentation - ansible.builtin.replace
+Ansible Documentation - ansible.builtin.lineinfile
+Alta3 Poster - Regular Expression
+RegEx101 - Regular Expression Assistant
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+In this lab, we're going to be making edits to the /var/log/bootstrap.log file to our target hosts. SSH into fry and look at the log file we're going to edit.
+
+student@bchd:~$ ssh fry
+
+Display the contents of, /var/log/bootstrap.log
+
+fry@fry:~$ cat /var/log/bootstrap.log
+
+Notice that lots of the lines in this file begin with the pattern, Setting up lib.
+
+Let's get out of fry.
+
+fry@fry:~$ exit
+
+Create a basic playbook file called ans/linechange.yml. This playbook uses the lineinfile module, which changes the first pattern match (only one), and by default works from the BOTTOM UP (end of file up). Read more about ansible.builtin.lineinfile
+
+student@bchd:~$ vim ~/mycode/linechange.yml
+
+Copy and paste the following into your new file
+
+---
+- name: Exploring line in file
+  # run against planetexpress group but not farnsworth
+  hosts: planetexpress
+  gather_facts: yes # required for our when statement
+  connection: ansible.builtin.ssh  # default connection type
+  
+
+  vars:
+   - fileloc: "/var/log/bootstrap.log"
+
+  tasks:
+   - name: "Insert a line into {{ fileloc }}"
+     ansible.builtin.lineinfile:
+       path: "{{ fileloc }}"
+       regexp: "^Setting up lib.*"
+       line: "REDACTED BY ANSIBLE lineinfile module"
+       backup: yes
+     become: true
+     when: ansible_os_family == "Debian"  # restrict to only Debian hosts
+                                          # depends on gather_facts
+Save and exit. Press ESC and then type :wq
+
+Run the playbook. The expectation is that this module, lineinfile will replace the first occurrence of a line that matches the pattern within our regexp. That pattern says, "Any lines that begin with, Setting up lib". The file to search for has been defined as the variable fileloc. We should also end up with a backup of our original file.
+
+student@bchd:~$ ansible-playbook ~/mycode/linechange.yml
+
+SSH to the fry machine.
+
+student@bchd:~$ ssh fry
+
+Display the contents of, /var/log/bootstrap.log
+
+fry@fry:~$ cat /var/log/bootstrap.log
+
+As expected, the module lineinfile only replaced the first occurence of the pattern. Notice that only one of the lines has been changed to read, "REDACTED BY ANSIBLE lineinfile module".
+
+Exit fry.
+
+fry@fry:~$ exit
+
+Create a basic playbook file called ~/mycode/replacechange.yml. This time we're using the replace module, which is a bit different than lineinfile. Replace, will replace all instances of a pattern within a file. Read more about ansible.builtin.replace
+
+student@bchd:~$ vim ~/mycode/replacechange.yml
+
+---
+ - name: Exploring replace
+   hosts: planetexpress
+   gather_facts: yes # required for our when statement
+   connection: ansible.builtin.ssh  # default connection type
+
+   vars:
+    - fileloc: "/var/log/bootstrap.log"
+
+   tasks:
+    # ansible.builtin.replace - replaces ALL instances of an occurrence
+    - name: "Insert a line into {{ fileloc }}"
+      ansible.builtin.replace:
+        path: "{{ fileloc }}"
+        regexp: "^Setting up lib.*"
+        replace: "REDACTED BY ANSIBLE replace module"
+        backup: yes
+      become: true
+      when: ansible_os_family == "Debian"  # restrict to only Debian hosts
+                                           # depends on gather_facts
+
+To save and quit out of vim, press ESC and then type :wq.
+
+Now run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/replacechange.yml
+
+SSH to the fry machine.
+
+student@bchd:~$ ssh fry
+
+Display the contents of, /var/log/bootstrap.log
+
+fry@fry:~$ cat /var/log/bootstrap.log
+
+Notice that ALL lines that still began with our pattern, Setting up lib have been changed to read, "REDACTED BY ANSIBLE replace module". Exit fry.
+
+fry@fry:~$ exit
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+

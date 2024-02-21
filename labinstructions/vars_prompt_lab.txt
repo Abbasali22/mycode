@@ -1,0 +1,98 @@
+Lab Objective
+The objective of this lab is to learn how to prompt for input via Ansible. When prompting for input we use the vars_prompt keyword within the play section of the playbook. This section is optional, and should be used when you need to prompt the user for dynamic input (think connection, or new account passwords).
+
+Ansible vars_prompt
+
+Pausing the playbook and waiting for entry is not the most automation friendly technique. However, if extra variables are provided at run time that define those variables prompted for by vars_prompt, the prompted section will be skipped. Extra variables have the highest precedence, and will always override variables defined at any other location.
+
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Use vim to create a file called, prompt-playbook01.yml.
+
+student@bchd:~$ vim ~/mycode/prompt-playbook01.yml
+
+The following playbook will prompt the user to define the variable yourpassword. Please note that we don't need to be asking for a password. This could be a server to connect to, or perhaps a value to end up with in a config file. Add the following into your playbook:
+
+---
+- name: How to prompt for variables
+  hosts: localhost
+  gather_facts: no
+
+  vars_prompt:
+    - name: "yourpassword"  # Variable name to define
+      prompt: "What is your password?" # Question to ask
+      ## do not reveal the password (optional)
+      private: yes
+      ## run this encryption method (optional)
+      encrypt: "sha512_crypt"
+      ## type the password twice (optional)
+      confirm: yes
+      ## this is the size of the RAND you'd like to have generated (optional)
+      salt_size: 7
+      # salt: slappysquirrel88 # provide your own RAND (optional)
+      ## default to this password (optional)
+      default: "qwerty"
+
+  tasks:
+    - name: Print out the password
+      debug:
+        msg: "{{ yourpassword }}"
+Save and exit with :wq
+
+Run the playbook and examine the output.
+
+student@bchd:~$ ansible-playbook ~/mycode/prompt-playbook01.yml
+
+Notice that the password is totally encrypted. This is how it will appear in logs as well. If we allow Ansible to define a new RAND each time (do not use a static RAND), then it is highly doubtful that this encrypted value will be 'cracked.'
+
+Comment out (put a # in front of) some of the optional parameters within vars_prompt and try running it again. Commenting out default: "qwerty" is a line that would be fine to comment out. After you have commented out a line or two, run the code again to see the effects.
+
+Continue to perform the above step until you're sure you understand what each of the vars_prompt parameters do.
+
+Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/prompt-playbook02.yml
+
+Create the following playbook:
+
+---
+- name: How to prompt for variables
+  hosts: professors     # connect to the professors group
+  gather_facts: no
+
+  vars_prompt:
+    - name: "ansible_ssh_pass"  # password to connect to the hosts in the professors group
+      prompt: "What is your ssh password?" # Question to ask
+      ## do not reveal the password (optional)
+      private: yes
+
+  tasks:
+    - name: connect to the professors and install figlet
+      yum:
+        name: figlet
+        state: present
+      become: yes
+Save and exit with :wq
+
+Run your new playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/prompt-playbook02.yml
+
+When prompted, type alta3
+
+The playbook should install figlet on the remote system. If you'd like to check, SSH to farnsworth and type figlet followed by did it work?. Use CTRL + c to exit the app.
+
+Great job! That's it for this lab.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "vars prompts"
+git push origin
+cd ~/
+

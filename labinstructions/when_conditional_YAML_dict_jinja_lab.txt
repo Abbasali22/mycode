@@ -1,0 +1,179 @@
+Lab Objective
+Playbooks are always written in YAML Ain't Markup Language, or YAML. YAML attempts to be a human-readable version of JSON, and therefore, be easier to write. If nothing else, the standard relaxes the requirement for the number of punctuating marks, and replaces those concepts with simple white spacing.
+
+Playbooks can also be enhanced by conditionals. The idea behind a conditional is classically handled by the if keyword in most languages. Within Ansible, it is handled by the when keyword.
+
+It will be helpful to review the YAML specification available here:
+https://yaml.org/spec/1.2/spec.html
+
+Review all available Ansible keywords here:
+https://docs.ansible.com/ansible/latest/reference_appendices/playbooks_keywords.html
+
+Jina2 Filters are available here:
+https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html
+
+Procedure
+We'll run a few playbooks against our localhost, so no need to set anything up in this lab.
+
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+Let's begin by making a directory to work in.
+
+student@bchd:~$ mkdir -p ~/mycode/
+
+Startup an editor and create a file called ~/mycode/playbook-dictrecall01.yml
+
+student@bchd:~$ vim ~/mycode/playbook-dictrecall01.yml
+
+Create the following playbook:
+
+---
+ - name: Intro to Dictionaries
+   hosts: localhost
+   gather_facts: no
+
+   vars:
+     configA: exampleA.cfg    # var mapped to a str
+     configB: exampleB.cfg    # var mapped to a str
+     licensetypes:            # var mapped to a list of strs
+       opentypes:
+         - apache2.0
+         - gnu public license (GPL)
+         - mit license
+         - mozilla public license
+       paytypes:
+         - windows
+         - redhat
+         - apple
+
+   tasks:
+    - name: Recall a key value pair mapping
+      debug:
+        var: configA        # returns exampleA.cfg
+
+    - name: Recall a key value mapping where the value is a list
+      debug:
+        var: licensetypes.opentypes   # returns a list of license types
+
+    - name: Display the MIT License
+      debug:
+        var: licensetypes.opentypes[2]   # returns mit license
+
+    - name: Display Windows
+      debug:
+        var: licensetypes.paytypes[0]   # returns windows
+Save and exit with :wq
+
+Run the new playbook until you are certain you understand how we are recalling variable values from within dictionary.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-dictrecall01.yml
+
+Create a new playbook file called, ~/mycode/playbook-yaml-tf01.yml
+
+student@bchd:~$ vim ~/mycode/playbook-yaml-tf01.yml
+
+True and False conditionals can be a bit tricky. If you ever pass values in from the CLI, the variables will always be read as strings. Strings exist, so they always test True. This is weird, but if Ansible thinks False is actually "False", then it will test as True! The solution to this, is to place a 'pipe', followed by the bool Jinja2 filter after the expression. More on this later, but if you're dying to know, Jinja2 is a templating language used for performing some on-the-fly data translations. Read about Jinja2 filters in Ansible here: https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html
+
+Create the following playbook:
+
+---
+- name: Intro to T and F conditionals
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    bool_var: True  # This will cause "
+    msg_var: "TIME TO PANIC!"
+
+  tasks:
+  - name:  Runs when bool_var is true
+    debug:
+      msg: "{{ msg_var }}"
+    when: bool_var|bool
+
+  - name: runs when bool_var is false
+    debug:
+      msg: "DONT PANIC!"
+    when: not bool_var|bool
+Save and exit with :wq
+
+Try running your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-yaml-tf01.yml
+
+Pass in a new value for the bool_var. Since we are passing the replacement value as an "extra-var", this value always wins. Try it out!
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-yaml-tf01.yml -e bool_var=False
+
+As expected, the extra variable does override the playbook var, as extra variables have the highest precedence.
+
+Create a new playbook to further explore jinja filters.
+
+student@bchd:~$ vim ~/mycode/playbook-jinja-filters-03.yml
+
+Jinja filters can be used to force more than "just" boolean data types. A common operation might be forcing string data to be an integer ("22" to become 22). In the following playbook, the value of ansible_facts.lsb.major_release is forced to be 18 as opposed to, "18".
+
+---
+- name: Using Jinja within our Playbook
+  hosts: planetexpress  # defined within the inventory
+  connection: ssh
+  gather_facts: true    # required for ansible_facts
+
+  tasks:
+
+  - name: Display all ansible_facts
+    debug:
+      var: ansible_facts
+      verbosity: 2        # this will ONLY run if you include -vv
+
+  - name: What does ansible_facts.os_family contain?
+    debug:
+      var: ansible_facts.os_family
+      verbosity: 1        # this will ONLY run if you include -v
+
+  - name: What does ansible_facts.lsb contain?
+    debug:
+      var: ansible_facts.lsb
+      verbosity: 1        # this will ONLY run if you include -v
+
+  - name: Some task that runs ONLY on hosts that match our conditional
+    debug:
+      msg: "I am a Debian host that is running ATLEAST ver 18 of my OS"
+    when: ansible_facts.os_family == "Debian" and ansible_facts.lsb.major_release | int >= 18
+Save and exit with :wq
+
+Run the playbook with two -vv flags. This will trigger ALL the debug statements to run. Placing verbosity parameters on debug is a common technique for suppressing output that was required during the development process.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-jinja-filters-03.yml -vv
+
+That was a bit overwhelming. Try running it with just a single -v flag.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-jinja-filters-03.yml -v
+
+Finally, run with no flags.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-jinja-filters-03.yml
+
+Answer the following questions:
+
+Q: What is the Jinja filter within the last playbook?
+A: int
+Q: What does this Jinja filter do?
+A: Forces a data type to be an integer
+Q: Why was this necessary?
+A: To write an arithmetic test such as, >= 18
+Q: Do all Jinja filters "force" data types?
+A: No. The origins of Jinja are in HTML templating, so many filters focus on modifying string data (example: capitalization or lower-casing)
+Q: Why are there no "{{ }}" statements within the "when: " conditionals?
+A: Ansible drops the requirement for the double-quote, mustache-bracket syntax within "when: " conditionals
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "yaml dictionary"
+git push origin
+cd ~/
+

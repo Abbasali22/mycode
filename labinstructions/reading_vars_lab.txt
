@@ -1,0 +1,327 @@
+Lab Objective
+The objective of this lab is to demonstrate some mechanisms for reading a series of variables into a playbook. Variable information can be provided from sources like, files, encrypted stores, URI, parsed from returned JSON, and many more. Once obtained, they often need manipulation. Manipulation techniques can include string and list indexing, calling on dictionary keys, referencing python methods, and using jinja templates. This lab teaches some of these techniques.
+
+Procedure
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+We want to stay organized, so create a directory structure, ~/mycode.
+
+student@bchd:~$ mkdir -p ~/mycode/
+
+Move into the new directory.
+
+student@bchd:~$ cd ~/mycode
+
+In this lab, we'll run against localhost, so go ahead and create a playbook.
+
+student@bchd:~/mycode$ vim playbook-varspractice01.yml
+
+Create the following.
+
+- name: learning to recall var data                                               
+  hosts: localhost
+
+  # these are play vars
+  vars:
+    telecom:
+      - ericsson
+      - alu
+      - avaya
+      - cisco
+    heroes:
+      marvel:
+        - spiderman
+        - ironman
+        - daredevil
+      dc:
+        - wonderwoman
+        - batman
+        - superman
+
+  tasks:
+    # 1st item in the marvel list
+    - name: print out spiderman
+      ansible.builtin.debug:
+        msg: "{{ heroes.marvel[0] }}"
+
+    # second item in the dc list
+    - name: print out batman
+      ansible.builtin.debug:
+        msg: "{{ heroes.dc[1] }}"
+
+    - name: print out ALL dc heroes
+      ansible.builtin.debug:
+        msg: "{{ heroes.dc }}"
+
+    - name: print out all dc heroes with a loop
+      ansible.builtin.debug:
+        msg: "{{ item }}"
+      loop: "{{ heroes.dc }}"
+
+    # fourth item in the telecom list
+    - name: print out cisco
+      ansible.builtin.debug:
+        msg: "{{ telecom[3] }}"
+
+    - name: Print out all dc and marvel heroes
+      debug:
+        msg: "{{ heroes }}"
+
+    - name: print out ALL dc AND marvel heroes ONLY
+      ansible.builtin.debug:
+        msg: "{{ item }} is the greatest! Go {{ item }}!!!!"
+      loop: "{{ heroes.marvel + heroes.dc }}"
+Save and exit with Esc and then :wq
+
+Run your playbook.
+
+student@bchd:~/mycode$ ansible-playbook playbook-varspractice01.yml
+
+Make a directory for a separate vars file.
+
+student@bchd:~/mycode$ mkdir -p ~/mycode/vars
+
+Create a new vars file.
+
+student@bchd:~/mycode$ vim ~/mycode/vars/titanvars.yml
+
+Create the following vars file.
+
+---
+prefix_list:
+  ipv4:
+     - name: "ICM-TITAN"
+       seq:
+         -  num: "10"
+            action: "act-10"
+            rule: "rule-10"
+         -  num: "20"
+            action: "act-20"
+            rule: "rule-20"
+     - name: "ICM-TITAN2"
+       seq:
+         -  num: "30"
+            action: "act-30"
+            rule: "rule-30"
+Save and exit with Esc and then :wq
+
+Create a playbook.
+
+student@bchd:~/mycode$ vim playbook-varspractice02-broken.yml
+
+Create the following. To move through our data, we'll use a loop. The problem is that our data is a dictionary, and not a list, we will expect this first playbook to fail
+
+---
+- name: Using a complex vars file
+  hosts: localhost
+  gather_facts: False
+
+  vars_files:
+    - ~/mycode/vars/titanvars.yml
+
+  tasks:
+  - name: debug with_dict
+    ansible.builtin.debug:
+      var: "{{ item }}"
+    loop: "{{ prefix_list }}"  # this will FAIL because prefixlist is a dictionary
+Save and exit.
+
+Let's run this playbook and watch this playbook fail
+
+student@bchd:~/mycode$ ansible-playbook playbook-varspractice02-broken.yml
+
+Let's fix our broken playbook. We can create a new one with a new name for clarity.
+
+student@bchd:~/mycode$ vim playbook-varspractice02-fixed.yml
+
+The keyword 'loop' wants a list. To correct this, we can use a jinja filter, dict2items
+
+---
+- name: Using a complex vars file
+  hosts: localhost
+  gather_facts: False
+
+  vars_files:
+    - ~/mycode/vars/titanvars.yml
+
+  tasks:
+  - name: debug with_dict
+    ansible.builtin.debug:
+      var: "{{ item }}"
+    loop: "{{ prefix_list|dict2items }}"   ## edit this line to include dict2items
+    ## the above is a jinja filter
+Save and exit.
+
+Jinja filters are... strange. The documentation on them isn't the best, but you should review it anyways: https://docs.ansible.com/ansible/latest/user_guide/playbooks_filters.html
+
+Let's run this playbook and watch the playbook run successfully, as the jinja filter is able to convert our dictionary into an iterable list.
+
+student@bchd:~/mycode$ ansible-playbook playbook-varspractice02-fixed.yml
+
+Create a new playbook.
+
+student@bchd:~/mycode$ vim playbook-varspractice03.yml
+
+The following playbook shows two techniques for looping across data. It really depends what you're trying "to do" to say which way is "correct".
+
+---
+- name: Practice with variable manipulation
+  hosts: localhost
+  gather_facts: False
+
+  vars_files:
+    - ~/mycode/vars/titanvars.yml
+
+  tasks:
+
+    - name: debug with specific values
+      ansible.builtin.debug:
+        msg:
+          - "prefix-list key    >>> {{ item.key }}"
+          - "p value 0 name     >>> {{ item.value[0].name }}"
+          - "p value 1 name     >>> {{ item.value[1].name }}"
+          - "val 0 seq 0 num    >>> {{ item.value[0].seq[0].num }}"
+          - "val 0 seq 1 rule   >>> {{ item.value[0].seq[1].rule }}"
+          - "val 1 seq 0 action >>> {{ item.value[1].seq[0].action }}"
+      loop: "{{ prefix_list|dict2items }}"
+
+    - name: Loop across the list mapped to prefix_list.ipv4
+      ansible.builtin.debug:
+        var: item.name
+      loop: "{{ prefix_list.ipv4 }}"
+Save and exit.
+
+Run the new playbook.
+
+student@bchd:~/mycode$ ansible-playbook playbook-varspractice03.yml
+
+It is also possible to use Python methods within playbooks. Let's try manipulating a string with some python methods. First, obtain the python methods available to us.
+
+student@bchd:~/mycode$ python3
+
+Use the dir() function on a string to obtain a list of methods available.
+
+>>> dir("hello")
+
+Now use the help function to get a breakdown of how the upper() function works.
+
+>>> help(str.upper)
+
+Press q to quit. Repeat as many times as you'd like. Check out the split() method.
+
+>>> help(str.split)
+
+Again, press q to quit. You might also try getting help on some of the list methods (used for working with lists).
+
+>>> dir(list)
+
+And you might also get some help on the dictionary methods (used for working with dictionaries).
+
+>>> dir(dict)
+
+Get help on how the dictionary method .keys() works.
+
+>>> help(dict.keys)
+
+Exit the python interpreter.
+
+>>> exit()
+
+A perfect demonstration might be those situations in which we need to read it from APIs. The following playbook uses the uri module to send an HTTP GET to the described API. The returned JSON is then parsed and python is used within the playbook to manipulate variable data. The data set used in this example is provided here, visit the data set now: https://statsapi.web.nhl.com/api/v1/teams
+
+Create a playbook.
+
+student@bchd:~/mycode$ vim ~/mycode/playbook-varspractice04.yml
+
+Create the following solution. This solution not only uses Python to manipulate data, but also uses playbook tags. If you haven't yet studied Python tags, you might want to study them before studying the following.
+
+---
+- name: A playbook that manipulates data from uri
+  hosts: localhost
+
+  vars:
+    uritouse: "https://api.nhle.com/stats/rest/en/team"
+
+  tasks:
+
+  - name: Use URI module to send HTTP GET
+    ansible.builtin.uri:
+      method: GET
+      url: "{{ uritouse }}"
+    register: results
+    tags:
+      - data
+      - keys
+      - upper
+      - split
+
+  - name: Use python to show all dictionary keys with python
+    ansible.builtin.debug:
+      var: results.keys()   # .keys() is a python dict method
+    tags:
+      - keys
+
+  - name: Display fullName for each team and other values
+    debug:
+      msg: "fullName: {{ item.fullName }}"
+    loop: "{{ results.json.data }}"
+    tags:
+      - data
+
+  - name: Display ONLY the fullName for each team
+    debug:
+      msg: "fullName: {{ item.fullName }}"
+    loop: "{{ results.json.data }}"
+    loop_control:
+      label: "{{ item.id }}"
+    tags:
+      - data
+
+  - name: Loop across the teams and display the team locations made uppercase with python
+    ansible.builtin.debug:
+      var: "{{ item.fullName.upper() }}"  # .upper() is a python string method
+    loop: "{{ results.json.data }}"
+    loop_control:
+      label: "{{ item.id }}"
+    tags:
+      - upper
+
+  # Transform the team name into just the location: Florida Panthers into Florida.
+  - name: Loop across the team names and write out only the location of the team
+    vars:
+      split: "{{ item.fullName.split(' ', 1) }}"
+    shell: "echo {{ split[0] }} >> /tmp/teamlocations.txt"
+    loop: "{{ results.json.data }}"
+    tags:
+      - split
+Save and exit. In this playbook, notice the abundance of Python methods being used to manipulate data. Run your playbook and observe the use of the python .keys() method.
+
+student@bchd:~/mycode$ ansible-playbook ~/mycode/playbook-varspractice04.yml --tags "keys"
+
+Run your playbook to display the data the API has on each team.
+
+student@bchd:~/mycode$ ansible-playbook ~/mycode/playbook-varspractice04.yml --tags "data"
+
+Now run your playbook and observe the use of the python .upper() method.
+
+student@bchd:~/mycode$ ansible-playbook ~/mycode/playbook-varspractice04.yml --tags "upper"
+
+Now run your playbook and observe the use of the python .split() method.
+
+student@bchd:~/mycode$ ansible-playbook ~/mycode/playbook-varspractice04.yml --tags "split"
+
+See if your playbook produced /tmp/teamlocations.txt - giving you just the first Word of the team name.
+
+student@bchd:~/mycode$ cat /tmp/teamlocations.txt
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "consuming variables for use in playbooks"
+git push origin
+cd ~/
+OPTIONAL CHALLENGE: Edit the last task (tagged with split) to make sure teams like San Jose Sharks get included with the full name of their location.

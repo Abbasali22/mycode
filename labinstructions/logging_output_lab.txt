@@ -1,0 +1,162 @@
+Lab Objective
+A common question is where to find Ansible output data. If you pass -v with your playbooks, as in, ansible-playbook myplaybook.yml -i hosts -v, stderr and stdout will be shown. These values may be written out to a static file, the location of this file needs to be configured within the ansible.cfg file. The ansible.cfg will be searched for in the following order:
+
+First ANSIBLE_CONFIG (location is taken from environmental variable, if set) Second ansible.cfg (in the current directory) Third ~/.ansible.cfg (in the home directory) Fourth /etc/ansible/ansible.cfg Ansible will process the above list and use the first file found, all others are ignored
+
+To avoid having Ansible output data (which may be logged), use the no_log parameter. This is commonly inserted on a task if sensitive data is being exchanged. This keyword may be applied at the play, task, role or block level.
+
+Procedure
+Ensure you have a place to work in. According to the 4 places that may host ansible.cfg, this 'local' directory would be the third in the search process.
+
+student@bchd:~$ mkdir -p ~/mycode/
+
+Edit ~/.ansible.cfg. It is important to precede the config file with a dot. This makes the file hidden. Ansible can't find the file in the home directory, unless it is hidden.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Replace the contents of ~/.ansible.cfg with the following. Notice that we have a new parameter, log_path = /tmp/ansible.log
+
+[defaults]
+log_path = /tmp/ansible.log
+ask_sudo_pass = False
+ask_pass = False
+inventory = ~/mycode/inv/dev/hosts
+host_key_checking = False
+Save and exit.
+
+Create a simple playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-logme.yml
+
+Create the following playbook.
+
+---
+- name: Logging - Everything to standard out gets logged
+  hosts: localhost
+  connection: local # no need to ssh to ourselves
+  gather_facts: no
+
+  tasks:
+    - name: First debug
+      debug:
+        msg: "The first message in the playbook."   # this will NOT be logged
+      no_log: true   # this setting will PREVENT the task from being logged
+
+    - name: Second debug
+      debug:
+        msg: "The second message in the playbook."  # this WILL be logged
+Save and exit. Notice that we placed a no_log: true setting on our first debug task. This task will no longer be logged. This is an important keyword for tasks that perform sensitive operations, like passing credentials.
+
+Now everything Ansible outputs will be placed in /tmp/ansible.log. Ensure that is the case by checking how ansible is configured. The settings in YELLOW are variables that have been altered from their defaults. Scroll down and you should see an entry regarding logging.
+
+student@bchd:~$ ansible-config dumpCopied!
+
+To exit press q
+
+Try running any playbook you'd like. Even if it doesn't work, we should capture something in /tmp/ansible.log
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-logme.yml
+
+Let's look at our log file and see what was produced. Remember, we have no_log: true on our first task. Therefore, we don't expect the first task to be logged.
+
+student@bchd:~$ cat /tmp/ansible.log
+
+Make the following directory if it does not already exist.
+
+student@bchd:~$ sudo mkdir -p /etc/ansible/
+
+Try moving your ansible.cfg file to a different location. Even if you move the config file, it should still direct ansible to place logs in the /tmp/ansible.log. Do not make the file hidden when you move it. That condition is only valid if it is inside the user home directory.
+
+student@bchd:~$ sudo mv ~/.ansible.cfg /etc/ansible/ansible.cfg
+
+Check the current config. Ansible should still be logging to /tmp/ansible.log, but the instruction to do so should now be coming from /etc/ansible.cfg
+
+student@bchd:~$ ansible-config dump
+
+Run a playbook again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-logme.yml
+
+Look again at what was produced. You should (still) see the results of your latest playbook run within the log.
+
+student@bchd:~$ cat /tmp/ansible.log
+
+Create a new playbook. In this new playbook, we'll try playing around with the no_log parameter at the play level.
+
+student@bchd:~$ vim ~/mycode/playbook-logme02.yml
+
+Create the following:
+
+---
+- name: Turn off logging at play level
+  hosts: localhost   # resolves to Ansible controller
+  connection: local  # no need to SSH anywhere
+  gather_facts: no   # no need to run setup.py (gather_facts) module
+  #no_log: true      # uncomment this line to ensure no tasks are logged
+
+  tasks:
+      # API interactions often include login information or return sensitive data 
+      - name: Perform an API lookup (this may display sensitive data)
+        uri:
+            url: "https://api.le-systeme-solaire.net/rest/bodies/neso"
+            method: GET
+        register: results
+
+      # developers will often leave in debug tasks for future debugging
+      - name: Debug task left in by a developer for debugging
+        debug:
+            var: results
+Save and exit with :wq
+
+Run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-logme02.yml
+
+Notice how the debug task displayed the data retrieved by our API. Edit the playbook
+
+student@bchd:~$ vim ~/mycode/playbook-logme02.yml
+
+Uncomment the line #no_log: true so it reads no_log: true
+
+Save and exit with :wq
+
+Run the playbook again. This time, all output on all tasks will be suppressed. When the no_log keyword is used at the play level it works as a kind of global, and is applied to all tasks within the play.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-logme02.yml
+
+Run the playbook with a verbosity flag. Still, all output will be suppressed.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-logme02.yml -v
+
+IMPORTANT: To prevent problems later, remove the current config file.
+
+student@bchd:~$ sudo rm /etc/ansible/ansible.cfg
+
+Re-create ~/.ansible.cfg without logging activated!
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Logging should always be off unless you need it on (the security people will thank you for this). No logging is the default setting.
+
+[defaults]
+ask_sudo_pass = False
+ask_pass = False
+inventory = ~/mycode/inv/dev/hosts
+host_key_checking = False
+Save and exit with :wq
+
+Ensure logging is OFF.
+
+student@bchd:~$ ansible-config dump
+
+When you are sure logging is off (it should be GREEN NOT YELLOW), press q to exit.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "logging and no logging"
+git push origin
+cd ~/
+

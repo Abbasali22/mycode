@@ -1,0 +1,232 @@
+
+Lab Objective
+The objective of this lab is to explore keywords, register, when, as well as explore 'extra variables' (those variables passed at the CLI during run time).
+
+The keyword register allows for the assignment of a new variable to the JSON returned to a task after it completes execution. This new variable, and the associated information, could then be recalled for use later in the playbook. Perhaps, as an example, within a conditional.
+
+Conditionals are created with the when keyword. As the name implies, this keyword allows users to control 'when' a playbook executes. It should be noted, that when writing a 'when' statement, there is no need to surround variable values with double-mustached brackets.
+
+Ansible variables have precedence, where variables passed from the CLI always have the highest precedence (greatest priority). The flag to pass extra variables from the CLI is the, -e flag.
+
+Resources:
+
+Ansible Documention - Playbook Keywords
+Ansible Documentation - Variable Precedence Ansible Documentation - Commonly Used Facts
+GitHub - Ansible - Values of DISTRIBUTION and OS_FAMILY
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Create a playbook that we can use to explore the register keyword.
+
+student@bchd:~$ vim ~/mycode/playbook-register01.yml
+
+Create the following playbook.
+
+---
+ - name: Playbook with the register keyword
+   hosts: planetexpress
+   connection: ansible.builtin.ssh
+
+   tasks:
+
+     - name: "Issue a trivial command"
+       ansible.builtin.command: ls /lib/
+       register: contentz_lib
+
+     - name: "debug - display data returned"
+       ansible.builtin.debug:                  # display to stdout
+         msg: "{{ contentz_lib }}"
+
+     - name: "debug - standard error"
+       ansible.builtin.debug:
+         msg: "{{ contentz_lib.stderr }}"
+
+     - name: "debug - standard out"
+       ansible.builtin.debug:
+         msg: "{{ contentz_lib.stdout }}"
+Save and exit with Esc and then :wq
+
+Run the playbook and examine the JSON displayed on the screen by the debug tasks.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register01.yml
+
+Our playbook was able to 'save' what was returned from the command, ls /lib/ via register. We then recalled that stored variable data with debug and displayed it to the screen. First we looked at everything, then included dot notation to retrieve, specifically, stderr and then stdout.
+
+Create a basic playbook file called, ~/mycode/playbook-register02.yml
+
+student@bchd:~$ vim ~/mycode/playbook-register02.yml
+
+Create the following playbook. The website random.org has an HTTP API that allows us to harvest any kind of random number patterns we like. The link in our playbook will return a 0 or a 1. The register keyword will save what is returned to the variable randvarz. If you'd like, check out the website and API documentation here: https://www.random.org/clients/http/
+
+---
+- name: More Register Examples
+  hosts: planetexpress
+  gather_facts: yes
+  connection: ansible.builtin.ssh
+
+  tasks:
+    - name: Reach out with get_url to random generation
+      ansible.builtin.get_url:
+        url: https://www.random.org/integers/?num=1&min=0&max=1&col=1&base=10&format=plain&rnd=new
+
+        dest: ~/rand.txt
+        force: yes
+
+    - name: Read the rand.txt and save results in randvarz
+      ansible.builtin.command: cat ~/rand.txt
+      register: randvarz
+
+    - name: "debug - display the returned value"
+      ansible.builtin.debug:
+        msg: "The value returned to ansible was: {{ randvarz.stdout }}"
+Save and exit with Esc and then :wq
+
+Cool. Time to run the playbook!
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register02.yml
+
+Run it a second time.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register02.yml
+
+Finally, run it a third time.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register02.yml
+
+Let's make a new playbook, and introduce the when keyword. This will allow our playbook to accept some test-logic (conditionals).
+
+student@bchd:~$ vim ~/mycode/playbook-register03.yml
+
+Create the following playbook. Note the keyword, when. This allows us to introduce test logic, or, conditionals. Rather than just printing out a message, we can selectively print out a message, depending on the value of randvarz. Let's treat a 1 as a "win", and a 0 as a "loss". To be clear, this playbook doesn't really have any practical value. We're just testing how these keywords behave.
+
+---
+- name: Saving and recalling playbook values
+  hosts: planetexpress
+  gather_facts: true
+  connection: ansible.builtin.ssh
+
+  tasks:
+    - name: Reach out with get_url to random generation
+      ansible.builtin.get_url:
+        url: https://www.random.org/integers/?num=1&min=0&max=1&col=1&base=10&format=plain&rnd=new
+        dest: ~/rand.txt
+        force: yes
+
+    - name: Read the rand.txt and save results in randvarz
+      ansible.builtin.command: cat ~/rand.txt
+      register: randvarz
+
+    - name: "debug - display a win"
+      ansible.builtin.debug:
+        msg: "congratulations! {{ ansible_hostname }} won :)"
+      when: randvarz.stdout == "1"
+
+    - name: "debug - display a failure"
+      ansible.builtin.debug:
+        msg: "Sorry. {{ ansible_hostname }} lost :("
+      when: randvarz.stdout == "0"
+Save and exit with Esc and then :wq
+
+Cool. Time to run the playbook!
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register03.yml
+
+Run it a second time.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register03.yml
+
+Finally, run it a third time.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register03.yml
+
+Tasks within the playbook are now only running when a particular condition is found to be True.
+
+Let's see if we can't put these keywords to some practical value. SSH to fry.
+
+student@bchd:~$ ssh fry@10.10.2.4
+
+Create a new directory in the home folder. This is important. You'll see why in a moment.
+
+fry@fry:~$ sudo mkdir -p /home/leela
+
+Exit the fry box.
+
+fry@fry:~$ exit
+
+Create a new playbook named playbook-register04.yml
+
+student@bchd:~$ vim ~/mycode/playbook-register04.yml
+
+Add the following into the new playbook. The value ansible_os_family is provided by the gather_facts module. Conditionals is a fairly advanced topic, so a good starting point would be the reference material found here: Ansible Documentation - Commonly Used Facts
+
+---              
+- name: Deploy mission critical app  
+  hosts: planetexpress
+  gather_facts: True
+  connection: ansible.builtin.ssh
+
+  tasks:
+  - name: Cowsay on Debian system (apt)
+    ansible.builtin.apt:
+      name: cowsay
+      state: present
+    become: yes
+    when: ansible_os_family == "Debian"
+    
+  - name: Cowsay on RedHat system (yum)
+    ansible.builtin.yum:
+      name: cowsay
+      state: present
+    become: yes
+    when: ansible_os_family == "RedHat"
+    
+  - name: Get all home directories across all systems
+    ansible.builtin.command: ls /home
+    become: yes
+    register: homevarz
+    
+  - name: Create a README.txt file if it does not exist in every home user directory
+    ansible.builtin.lineinfile:
+      create: yes
+      path: /home/{{ item }}/README.txt
+      line: "Type cowsay 'Moo, my good sir' for a funny display. Use CTRL + C to quit"
+    loop: "{{ homevarz.stdout_lines }}"
+    become: yes
+Save and exit with Esc and then :wq
+
+Time to run the playbook. The first task only runs on Debian machines (like Ubuntu) and installs cowsay. The second task only runs on RedHat machines, so we don't expect this to run. Next we query all of the home user directories across all machines and register their values as homevarz. The final task is a bit complex, but you can handle it. The lineinfile module creates README.txt, but only if it doesn't exist. The path will be realized once the variable item is expanded. The way item is expanded is via the loop keyword. The loop keyword is the latest way to create loops in Ansible and is worth our study. Run the playbook!
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-register04.yml
+
+SSH to fry.
+
+student@bchd:~$ ssh fry@10.10.2.4
+
+Confirm fry has README.txt
+
+fry@fry:~$ cat README.txt
+
+Confirm the leela home directory also has README.txt
+
+fry@fry:~$ cat /home/leela/README.txt
+
+If you'd like to play cowsay, now is the time. Press CTRL + C to exit the game when you're done.
+
+fry@fry:~$ cowsay "Moo, my good sir."
+
+Exit the fry machine.
+
+fry@fry:~$ exit
+
+That was another long lab, but great job! The register and when keywords should now be more clear.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "when conditionals"
+git push origin
+cd ~/

@@ -1,0 +1,304 @@
+Lab Objective
+This lab will demonstrate the Ansible handlers. As we’ve mentioned, modules should be idempotent and can relay when they have made a change on the remote system. Playbooks recognize this and have a basic event system that can be used to respond to change.
+
+These ‘notify’ actions are triggered at the end of each block of tasks in a play, and will only be triggered once even if notified by multiple different tasks.
+
+Those things listed under a notify section of a task are called handlers.
+
+Handlers are lists of tasks, not really any different from regular tasks, that are referenced by a globally unique name, and are notified by notifiers. If nothing notifies a handler, it will not run. Regardless of how many tasks notify a handler, it will run only once, after all of the tasks complete in a particular play.
+
+Check out some basic documentation on handlers: https://docs.ansible.com/ansible/latest/user_guide/playbooks_handlers.html
+
+Procedure
+We'll be using the planetexpress team for this lab! Run the command below to prepare your environment.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Create a basic playbook file called playbook-handler01.yml
+
+student@bchd:~$ vim ~/mycode/playbook-handler01.yml
+
+Replicate the following playbook. Know that apache2 is the Ubuntu name for the httpd service you'd find on an RHEL or CentOS box.
+
+---
+- name: Apache server installed
+  hosts: web
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+  # the package module tries to select
+  # yum or apt or pkg5 (etc) automatically
+  - name: latest Apache version installed
+    package:
+      name: apache2
+      state: latest
+
+  - name: Apache enabled and running
+    service:
+      name: apache2
+      enabled: yes
+      state: started
+Save and exit.
+
+Run the playbook. It should deploy the Apache httpd webservice on each of the hosts described by web
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler01.yml -i ~/mycode/inv/dev/hosts
+
+First, cURL the bender webserver, and ensure the Apache webservice is responding. You should get an HTTP response.
+
+student@bchd:~$ curl http://10.10.2.3
+
+Next, cURL the fry webserver, and ensure the Apache webservice is responding.
+
+student@bchd:~$ curl http://10.10.2.4
+
+Let's update our playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-handler01.yml
+
+Make your playbook look like this. Notice the additional content at the end.
+
+---
+- name: Apache server installed
+  hosts: web
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+  # the package module tries to select
+  # yum or apt or pkg5 (etc) automatically
+  - name: latest Apache version installed
+    package:
+      name: apache2
+      state: latest
+
+  - name: Apache enabled and running
+    service:
+      name: apache2
+      enabled: yes
+      state: started
+
+  # Copy index.html into the service
+  - name: copy index.html
+    copy:
+      src: ~/mycode/files/index.html
+      dest: /var/www/html/
+Save and exit.
+
+Let's also create an index.html file that can be moved into our Apache server. Best practice says this should live in a folder called files. Make that now.
+
+student@bchd:~$ mkdir -p ~/mycode/files/
+
+Create index.html
+
+student@bchd:~$ vim ~/mycode/files/index.html
+
+Make index.html look like the following:
+
+<body>
+<h1>Apache Webserver is up and running!</h1>
+Way to automate with Ansible!
+</body>
+Save and exit.
+
+Great. Try running the playbook again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler01.yml -i ~/mycode/inv/dev/hosts
+
+Once again, cURL the bender webserver. The returned page should now be our index.html page
+
+student@bchd:~$ curl http://10.10.2.3
+
+Don't forget to cURL the fry webserver.
+
+student@bchd:~$ curl http://10.10.2.4
+
+While we can change the content being returned by the service, we can't change the configuration of the service without restarting it. The problem is that if we hardcode a restart into our playbook, than we will ALWAYS get an interruption of service when the playbook runs, even if it isn't required. The solution is an Ansible handler. Update the playbook again.
+
+student@bchd:~$ vim ~/mycode/playbook-handler01.yml
+
+Make your playbook look like this. Notice the additional content at the end.
+
+---
+- name: Apache server installed
+  hosts: web
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+  # the package module tries to select
+  # yum or apt or pkg5 (etc) automatically
+  - name: latest Apache version installed
+    package:
+      name: apache2
+      state: latest
+
+  - name: Apache enabled and running
+    service:
+      name: apache2
+      enabled: yes
+      state: started
+
+  # Copy index.html into the service
+  - name: copy index.html
+    copy:
+      src: ~/mycode/files/index.html
+      dest: /var/www/html/
+
+  # if dest is directory download every time
+  # but only replace if destination is different
+  - name: Download a copy of apache2.conf
+    get_url:
+      url: https://raw.githubusercontent.com/rzfeeser/alta3files/master/apache2.conf
+      dest: /etc/apache2/
+    notify:
+        - restart_apache
+
+  # This will ONLY run if the associated tasks run
+  # no matter how many times called these tasks
+  # will ONLY run once
+  handlers:
+  - name: restart_apache
+    service:
+      name: apache2
+      state: restarted
+Save and exit.
+
+Great. Try running the playbook again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler01.yml -i ~/mycode/inv/dev/hosts
+
+Notice that the file was downloaded to the remote system (the get_url task is marked CHANGED). Because that task ran, the handler was also called. The handler, in this case, is restarting our service, ensuring our new apache2.conf file has taken effect.
+
+To observe how a handler works, you'll need to run the playbook a second time.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler01.yml -i ~/mycode/inv/dev/hosts
+
+Notice that the handler did not run this time. It did not run, because it wasn't called by the get_url task. Since our service wasn't needlessly restarted, our web service did not experience a service impact.
+
+Run the playbook one more time. Nothing changed, so we won't expect the get_url or handler to run.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler01.yml -i ~/mycode/inv/dev/hosts
+
+Now let's study the Ansible listener. A better name would of been, "a way to group together multiple handlers that can all be triggered when the listener is notified". In our story, maybe we also want an instance of MySQL available that our webserver can interact with. We can accomplish that by installing 'MariaDB'. If the Apache webservice, or the MariaDB client or server need installed or updated, it might be a good idea to restart all off the services, which could be a great application to notify a listener. Create a new playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-handler02-listen.yml
+
+Write out the following playbook. It is similar to our previous playbook, with some commented additions. The first is to give package a list of services to install (apache2, mariadb server and client). We also added a notify to restart_webservices. Within the handler section, we use the listen keyword to group together handlers by the value restart_webservices. Therefore, if the package task runs, both the Apache and MySQL services will be bounced.
+
+---
+- name: Apache server installed
+  hosts: web
+  gather_facts: no
+  become: yes
+
+  tasks:
+
+  # the package module tries to select
+  # yum or apt or pkg5 (etc) automatically
+  # if any of these services need installed or
+  # updated, then they ALL get restarted
+  - name: latest Apache version installed
+    package:
+      name:
+        - apache2        ## <-- updated
+        - mariadb-server ## <-- updated
+        - mariadb-client ## <-- updated
+      state: latest
+    notify:
+      - restart_webservices ## <-- updated
+
+  - name: Apache enabled and running
+    service:
+      name: apache2
+      enabled: yes
+      state: started
+
+  # Copy index.html into the service
+  - name: copy index.html
+    copy:
+      src: ~/mycode/files/index.html
+      dest: /var/www/html/
+
+  # if dest is directory download every time
+  # but only replace if destination is different
+  # https://raw.githubusercontent.com/rzfeeser/
+  #              alta3files/master/apache2.conf
+  - name: Download a copy of apache2.conf
+    get_url:
+      url: https://raw.githubusercontent.com/rzfeeser/alta3files/master/apache2.conf
+      dest: /etc/apache2/
+    notify:
+        - restart_apache   # ONLY restart apache if this conf
+                           # file needs updated
+
+  # ensure the MySQL service is up and running
+  - name: MySQL (MariaDB) is running
+    service:
+      name: mariadb
+      enabled: yes
+      state: started
+
+  # if this line needs added to my.cnf
+  # then ONLY the MySQL service needs restarted
+  - name: Modify SQL conf file to listen on all interfaces
+    lineinfile:
+      dest: /etc/mysql/my.cnf
+      regexp: "^bind-address"
+      line: "bind-address=0.0.0.0"
+    notify:
+      - restart_mysql
+
+  # This will ONLY run if the associated tasks run
+  # no matter how many times called these tasks
+  # will ONLY run once
+  handlers:
+  - name: restart_apache
+    service:
+      name: apache2
+      state: restarted
+    listen: restart_webservices
+
+  ## this is new, restarts MySQL
+  - name: restart_mysql
+    service:
+      name: mariadb
+      state: restarted
+    listen: restart_webservices
+Save and exit.
+
+Let's trash and rebuild our hosts.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Okay, run your playbook against your freshly rebuilt hosts.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler02-listen.yml -i ~/mycode/inv/dev/hosts
+
+The result should be ok=8 and changed=8. Now, try running that playbook again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-handler02-listen.yml -i ~/mycode/inv/dev/hosts
+
+This time, the result should be ok=6 and changed=0. Hopefully, the reason is clear; the target machines had already achieved the state we described with our Ansible code, so there was no reason to 'notify' any of our handlers.
+
+Try triggering a single handler. Edit the playbook so it reads, bind-address=1.1.1.1, and re-run. After this run, the result should be ok=7 changed=2. That's because the change caused the lineinfile module to execute. When it executes, the restart_mysql handler is called, thus restarting the single MySQL service, not both services.
+
+Answer the following questions:
+
+Q: What is the purpose of a handler?
+A: Handlers are tasks that are only run if they are notified to run. Notifications are produced if a task within the task section reports a "change". Handlers only run once, even if they are notified to run multiple times. Typically, they are used to perform restarts on an application or system.
+Q: What is a listener?
+A: A listener is a way to "group" together handlers.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "handlers"
+git push origin
+cd ~/
+

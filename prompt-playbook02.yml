@@ -1,6 +1,6 @@
 ---
 - name: How to prompt for variables
-  hosts: professors     # connect to the professors group
+  hosts: raiders     # connect to the professors group
   gather_facts: no
 
   vars_prompt:
@@ -9,9 +9,10 @@
       ## do not reveal the password (optional)
       private: yes
 
+
   tasks:
-    - name: connect to the professors and install figlet
-      yum:
+    - name: connect to indy and istall figlet
+      apt:
         name: figlet
         state: present
       become: yes

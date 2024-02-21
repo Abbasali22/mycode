@@ -1,0 +1,192 @@
+Lab Objective
+In this lab, you will explore the Ansible Lookup Plugins. The name sounds a bit more dramatic than it is, the TLDR on Lookup Plugins is they are used to return data from an outside source. Source types include csv files, flat files, URLs, MongoDB, RabbitMQ, and many more.
+
+Looking up the contents of a file is as simple as, {{ lookup("file", "/tmp/file.txt") }} where the first value, file describes the type of data to be accessed, followed by the path.
+
+Review more about Lookup Plugins here: https://docs.ansible.com/ansible/latest/plugins/lookup.html
+
+Procedure
+To get a list of all the lookup plugins, run the following command. Translated, this command says, "list for me all of the plugins that are of the technology lookup"
+
+student@bchd:~$ ansible-doc -t lookup -l
+
+Scroll up and down, press q to quit.
+
+Get help on the url lookup plugin.
+
+student@bchd:~$ ansible-doc -t lookup url
+
+Scroll up and down, press q to quit.
+
+Ensure you have the ~/mycode/ folder.
+
+student@bchd:~$ mkdir -p ~/mycode/
+
+Suppose we wanted to harvest from JSON data from an API, and then parse out that data. Start by navigating to the link http://api.open-notify.org/astros.json and review the returned data (JSON). This highly available real-time data-set can be returned to Ansible by using lookup with the url plugin.
+
+Create a basic playbook file called ~/mycode/playbook-lookup-url.yml.
+
+student@bchd:~$ vim ~/mycode/playbook-lookup-url.yml
+
+Create the following playbook.
+
+- name: Ansible and RESTful interfaces
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+          astros: "{{ lookup('url', 'http://api.open-notify.org/astros.json') }}"
+          spacecowboys: []
+
+  tasks:
+          - name: Quick ISS API checkup
+            debug:
+                    msg: "Today on the ISS are: {{ astros.people }}"
+
+          - name: Loop through our data and display each dict (name and craft)
+            debug:
+                    msg: "Loop across ISS data: {{ item }}"
+            loop: "{{ astros.people }}"
+
+          - name: Loop through our data and display ONLY first and last names
+            debug:
+                    msg: "Astro names are: {{ item.name }}"
+            loop: "{{ astros.people }}"
+
+          - name: Create a new list with ansible of astro names
+            set_fact:
+                    spacecowboys: "{{ astros.people|map(attribute='name')|list }}"
+
+          - name: Only display the first names of the astros
+            debug:
+                    msg: "{{ item.split()[0] }}"
+            loop: "{{ spacecowboys }}"
+Save and exit with :wq
+
+Run your playbook. Study the results and ensure you understand why the playbook is producing the values that it is.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-lookup-url.yml
+
+Get help on the csvfile lookup plugin.
+
+student@bchd:~$ ansible-doc -t lookup csvfile
+
+Scroll up and down, press q to quit.
+
+Let's write a playbook that makes "selective choices" from a CSV file using the lookup plugin, "csvfile". Note: If you want to translate entire CSV files, use the "read_csv" module.
+
+student@bchd:~$ vim ~/mycode/playbook-lookup-csvfile.yml
+
+Create the following playbook.
+
+---
+- name: Using "csvfile" Lookup Plugin to make "selective" choices from CSV data
+  hosts: localhost
+  connection: local
+  gather_facts: False
+
+  # The "csvfile" lookup plugin is for making "selective" choices from CSV data.
+  # If you want to convert entire CSV files to lists of dicts, use the ansible module,
+  #   community.general.read_csv
+
+  vars:
+          ip_poweredge_svr02: "{{ lookup('csvfile', 'pe02 file=~/mycode/files/ip_data.csv delimiter=,') }}"
+
+  tasks:
+          - name: Display the IP of the var ip_poweredge_svr02 as taken from our CSV file
+            debug:
+                    var: ip_poweredge_svr02  # displays, "192.168.44.21"
+
+
+          - name: Display the status of pe06 as taken from our CSV file
+            debug:
+                    var: lookup('csvfile', 'pe06 file=~/mycode/files/ip_data.csv delimiter=, col=3') # displays, "online"
+Save and exit with :wq
+
+Ensure you have the ~/mycode/files/ folder.
+
+student@bchd:~$ mkdir -p ~/mycode/files/
+
+Create the CSV file.
+
+student@bchd:~$ vim ~/mycode/files/ip_data.csv
+
+Create the following data set.
+
+pe01,192.168.33.12,pe01.example.com,online
+pe02,192.168.44.21,pe02.example.com,offline
+pe03,10.10.2.3,pe03.example.com,online
+pe04,172.12.32.3,pe04.example.com,online
+pe05,10.10.2.55,pe05.example.com,offline
+pe06,10.10.23.34,pe06.example.com,online
+Save and exit with :wq
+
+Run your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-lookup-csvfile.yml
+
+We can use the lookup plugin to render templates as well.
+
+student@bchd:~$ vim ~/mycode/playbook-lookup-template.yml
+
+Create the following playbook that uses the lookup 'template' plugin.
+
+---
+- name: Using lookup plugin 'template'
+  connection: local
+  gather_facts: false
+  hosts: localhost
+
+  vars:
+      # Note that we have to have the following three variables defined for our template to be returned.
+      tftp_ip: "10.10.2.22"
+      src_cfg_filename: bob.txt
+      start_cfg_filename: alice.txt
+
+      # the lookup() template plugin can be used a rendered (finished) template to a variable
+      # This behavior is unlike the template MODULE which would then COPY the finished template
+      # to a target host
+      tftp_config: "{{ lookup('template', '~/mycode/templates/tftp.cfg.j2') }}"
+
+  tasks:
+          - name: Display the entire rentered config
+            debug:
+                    var: tftp_config
+
+          # using the lookup plugin to create a tftp_config var
+          # THEN write that var into a file with the copy module is basically the same as
+          # using the template module
+          - name: Write out our variable (rendered template) to a file
+            copy:
+                    content: "{{ tftp_config }}" # this was created by the lookup() plugin
+                    dest: ~/tftp.cfg             # this is the name of the file we created
+Save and exit with :wq
+
+Make sure you have the templates directory in ~/mycode
+
+student@bchd:~$ mkdir -p ~/mycode/templates/
+
+Create a template that we can render.
+
+student@bchd:~$ vim ~/mycode/templates/tftp.cfg.j2
+
+Create the following template.
+
+#tftp startup-config
+TFTP server ip address: {{ tftp_ip }}
+Source configuration file name: {{ src_cfg_filename }}
+Startup configuration file name [startup]: {{ start_cfg_filename }}
+Run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-lookup-template.yml
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "lookup plugins"
+git push origin
+cd ~/
+

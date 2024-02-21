@@ -1,0 +1,184 @@
+Lab Objective
+The objective of this lab is to learn how to control the output of the playbook from invocation until the PLAY RECAP statistics. Suppose you wanted to simplify the output for those individuals that might only be running playbooks. Or maybe you want the results of the playbook returned as JSON. Callback plugins are the solution.
+
+Callback plugins may be activated one at a time from within ansible.cfg. Below are several permutations to test. The list of possible plugins can be found within the Ansible Documentation on callbacks.
+
+Read about "callback" plugins here:
+https://docs.ansible.com/ansible/latest/plugins/callback.html
+
+Procedure
+Ensure you are in /home/student/ (your home folder).
+
+student@bchd:~$ cd ~
+
+Be sure you have the ~/mycode directory. We use this directory to store our playbooks, this helps keep us organized.
+
+student@bchd:~$ mkdir -p ~/mycode
+
+Create a playbook, ~/mycode/playbook-littletest.yml
+
+student@bchd:~$ vim ~/mycode/playbook-littletest.yml
+
+Create the following simple playbook.
+
+---
+- name: Debug playbook to display ansible facts
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    # package attempts to identify the package handler on the local system
+    # and use the correct module
+    # however each repo may name package in a unique manner so you still
+    # may with to limit a task with the when: ansible_distribution conditional
+    # examples: yum, apt, dnf, pkg, etc.
+    - name: Install an app with apt only on Ubuntu systems
+      package:
+        state: present
+        name: sl
+      when: ansible_distribution == "Ubuntu"
+      become: yes
+
+    # print out the value of ansible_distribution
+    # (provided by gather_facts)
+    - name: Print out both users distro
+      debug:
+        var: ansible_distribution
+
+    # print out the value of ansible_distribution_version
+    - name: Print out both users distro ver
+      debug:
+        var: ansible_distribution_version
+Save and exit.
+
+From within a terminal window, edit your ~/.ansible.cfg file. Remember that this file contains the global settings we want to associate with Ansible at runtime.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Make sure your ~/.ansible.cfg has the following settings. It is okay to have more than this, but you must have at least the following.
+
+[defaults]
+host_key_checking=no
+nocows=True
+
+# DENSE CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = dense
+
+# JSON CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = json
+
+# NULL CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = null
+
+# LOG_PLAY CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = log_plays
+[callback_log_plays]
+# this is a FOLDER not a file. Ansible will create a log file PER host
+log_folder = /tmp/hosts/  
+Save and exit.
+
+Run your playbook. It should execute with typical output.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-littletest.yml
+
+Edit your ~/.ansible.cfg file.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Un-comment the following line. This will activate the dense callback. If you'd like, you can read about it here: https://docs.ansible.com/ansible/latest/plugins/callback/dense.html
+
+stdout_callback = dense
+Save and exit.
+
+Run your playbook. It should execute with a dense output (only a few lines will appear on the screen).
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-littletest.yml
+
+Edit your ~/.ansible.cfg file.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+You may only have one stdout_callback defined at a time. Comment out #stdout_callback = dense and then un-comment stdout_callback = json which will activate the json callback. If you'd like, you can read about it here: https://docs.ansible.com/ansible/latest/plugins/callback/json.html
+
+# DENSE CALLBACK
+# activate callback plugin (one at a time)
+# stdout_callback = dense
+
+# JSON CALLBACK
+# activate callback plugin (one at a time)
+stdout_callback = json
+Once you have made the change, save and exit.
+
+Run your playbook. It should execute with a json output to the screen.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-littletest.yml
+
+Edit your ~/.ansible.cfg file.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Remember, one stdout_callback at a time. Comment out #stdout_callback = json and then un-comment stdout_callback = null which will activate the null callback. Nothing will be printed to the screen. If you'd like, you can read about it here: https://docs.ansible.com/ansible/latest/plugins/callback/null.html
+
+# JSON CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = json
+
+# NULL CALLBACK
+# activate callback plugin (one at a time)
+stdout_callback = null
+Once you have made the change, save and exit.
+
+Run your playbook. It should execute with a null output to the screen. This callback plug in makes nothing display the screen.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-littletest.yml
+
+Edit your ~/.ansible.cfg file.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Comment out #stdout_callback = null and then un-comment stdout_callback = log_plays, [callback_log_plays] and log_folder = /tmp/hosts. Notice that [call_log_plays] it's own section of the ansible.cfg, so you may not have additional [defaults] settings below it. These changes will activate the log_plays callback. All of the output will be stored in a folder according to host. If you'd like, you can read about it here: https://docs.ansible.com/ansible/latest/plugins/callback/log_plays.html
+
+# NULL CALLBACK
+# activate callback plugin (one at a time)
+#stdout_callback = null
+
+# LOG_PLAY CALLBACK
+# activate callback plugin (one at a time)
+stdout_callback = log_plays
+[callback_log_plays]
+# this is a FOLDER not a file. Ansible will create a log file PER host
+log_folder = /tmp/hosts/  
+Once you have made the change, save and exit.
+
+Great! Run your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-littletest.yml
+
+Check out the results of your playbook.
+
+student@bchd:~$ cd /tmp/hosts/
+
+cat out the file. It should have the results of the playbook inside.
+
+student@bchd:~/tmp/hosts$ cat localhost
+
+Return to your home directory.
+
+student@bchd:~/tmp/hosts$ cd
+
+Before you sign off of this lab, be sure to comment out all of the log_play settings! This will return Ansible to the default output type. Read about the default Ansible callback here: https://docs.ansible.com/ansible/latest/plugins/callback/default.html
+
+CHALLENGE 01 (OPTIONAL) - Enable performance testing to determine how long each task is taking to execute. Do this by adding the line callbacks_enabled = profile_tasks anywhere under the heading [defaults] within ansible.cfg. After making the change, run any playbook to see new benchmark related statistics.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "plugins"
+git push origin
+cd ~/

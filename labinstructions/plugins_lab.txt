@@ -1,0 +1,282 @@
+
+Lab Objective
+Plugins augment Ansible’s core functionality such as parsing, loading inventory and Playbooks, running Playbooks and reading the results. As expected, plugins are written in Python. And while Ansible ships with a number of handy plugins, and you can easily write your own.
+
+Ansible Plugins fall into the following categories:
+
+action
+become
+cache
+callback
+cliconf
+connection
+httpapi
+inventory
+lookup
+netconf
+shell
+strategy
+vars
+filters
+tests
+In this lab, we'll explore some of the more critical plugins available to Ansible.
+
+Procedure
+Start in the home directory
+
+student@bchd:~$ cd
+
+To begin, run the ansible --version command to get some hints on where to begin looking for the Ansible plugins.
+
+student@bchd:~$ ansible --version
+
+Looks like we might have some luck if we move into /home/student/.local/lib/python3.10/site-packages/ansible. Move into that directory now.
+
+student@bchd:~$ cd /home/student/.local/lib/python3.10/site-packages/ansible
+
+Look at the directory structure.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible$ ls
+
+Move into plugins/
+
+student@bchd:~$ cd plugins/
+
+Let's begin our understanding of plugins with Action Plugins. An action plugin runs every time you run a module. They represent a layer between the executor engine and the module, allowing for controller-side actions to be taken before the module is executed.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins$ cd action/
+
+List the action plugin files.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ ls
+
+Let's try walking through how the template module would work. To start, review the usage via https://docs.ansible.com/ansible/latest/modules/template_module.html
+
+Another way to check out your Ansible modules is to use ansible-doc -l
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ ansible-doc -l
+
+Scroll up / down until you find the template module.
+
+Press q to quit.
+
+We can get better resolution on the template module with the ansible-doc tool.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ ansible-doc template
+
+Reviewing the documentation, you'll notice about half-way down the page, it makes notice that, note: This module has a corresponding action plugin.
+
+Press q to quit.
+
+If Ansible finds an action plugin with the same name as the module, that action plugin is used, otherwise the normal action plugin is used. NOTE: Tasks which use 'async' have a special action plugin, which is used to launch the task using the 'async_wrapper' module. Notice that within the plugin directory, we have a file called, template.py. Let's review it.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ less template.py
+
+To quit less, press q
+
+After the plugin code is executed, Ansible would next execute the module with the matching name, in this case template.py, within the configured module directory. Check that out now.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ cd ../../modules
+
+Display the module template.py.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/modules$ cat template.py
+
+Notice that it is mostly doc strings? That's because everything was handled by the template action plugin. The template action plugin itself creates the template file locally as a temporary file, and then uses the copy or file modules to push it out to the target system. Move back into ../plugins/action
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/modules$ cd ../plugins/action
+
+If a module name does not match any of the files within plugins/action, than the normal plugin is run. Let's take a look at that now.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ less normal.py
+
+The following code is the entirety of the 'normal' action plugin.
+
+# code from plugins/action/normal.py
+# (comments and most blank lines have been removed for brevity)
+
+from __future__ import (absolute_import, division, print_function)
+__metaclass__ = type
+
+from ansible.plugins.action import ActionBase
+from ansible.utils.vars import merge_hash
+
+
+class ActionModule(ActionBase):
+
+    def run(self, tmp=None, task_vars=None):
+
+        # individual modules might disagree but as the generic the action plugin, pass at this point.
+        self._supports_check_mode = True
+        self._supports_async = True
+
+        result = super(ActionModule, self).run(tmp, task_vars)
+        del tmp  # tmp no longer has any effect
+
+        if not result.get('skipped'):
+
+            if result.get('invocation', {}).get('module_args'):
+                # avoid passing to modules in case of no_log
+                # should not be set anymore but here for backwards compatibility
+                del result['invocation']['module_args']
+
+            # FUTURE: better to let _execute_module calculate this internally?
+            wrap_async = self._task.async_val and not self._connection.has_native_async
+
+            # do work!
+            result = merge_hash(result, self._execute_module(task_vars=task_vars, wrap_async=wrap_async))
+
+            # hack to keep --verbose from showing all the setup module result
+            # moved from setup module as now we filter out all _ansible_ from result
+            if self._task.action == 'setup':
+                result['_ansible_verbose_override'] = True
+
+        if not wrap_async:
+            # remove a temporary path we created
+            self._remove_tmp_path(self._connection._shell.tmpdir)
+
+        return result
+Exit less with q
+
+New action plugins usually only need to subclass ActionBase and override the 'run()' method.
+
+Within a plugin, modules may be executed remotely by the '_execute_module()' method, which can also accept other parameters to allow you to run more than one module remotely to create some complex actions. For example, the 'template' action uses the 'copy' and 'file' modules to do the real work of copying the templated file to the remote system. Take a peek at plugins/action/template.py again.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ less template.py
+
+The following is the snippet you're looking for within template.py
+
+# from plugins/action/template.py
+# L175-184 on the devel branch at the time of writing
+
+        # run the copy module
+        new_module_args.update(
+            dict(
+                src=xfered,
+                dest=dest,
+                original_basename=os.path.basename(source),
+                follow=True,
+            ),
+        )
+        result.update(
+            self._execute_module(
+                module_name='copy',             # copy module
+                module_args=new_module_args,
+                task_vars=task_vars,
+                tmp=tmp,
+                delete_remote_tmp=False,
+            )
+        )
+The above code is run after a temporary file is generated using the templating engine, which all occurs on the Ansible controller side. Using other modules in this manner allows us to avoid duplicating code and is very common in modules related to file operations.
+
+Press q to exit.
+
+Time to move on to Callback Plugins. One of the more heavily developed plugins, callbacks provide a way to react to events which occur during the execution of Playbooks. Move into ../callback
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/action$ cd ../callback
+
+Ansible can load multiple callbacks, however, we differentiate between callbacks which send output to the screen and those that don’t. This allows us to ensure output to the screen is legible. Callbacks are configured via a white list, configurable in ansible.cfg or via an environment variable ANSIBLE_CALLBACK_WHITELIST.
+
+Suppose you wanted to direct output to a Slack channel. The slack plugin could be used to achieve this.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/callback$ less slack.py
+
+slack.py: No such file or directory
+Wait! The slack plugin no longer resides inside of the built in ansible plugins, but instead gets installed through the ansible collection called community/general.
+
+In order to view the slack.py file, we now need to direct our search elsewhere!
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/callback$ less ../../../ansible_collections/community/general/plugins/callback/slack.py
+
+The following is the slack.py callback plugin.
+
+from ansible.constants import mk_boolean
+from ansible.module_utils.urls import open_url
+from ansible.plugins.callback import CallbackBase
+
+try:
+    import prettytable
+    HAS_PRETTYTABLE = True
+except ImportError:
+    HAS_PRETTYTABLE = False
+
+class CallbackModule(CallbackBase):
+    """This is an ansible callback plugin that sends status
+    updates to a Slack channel during playbook execution.
+
+    This plugin makes use of the following environment variables:
+        SLACK_WEBHOOK_URL (required): Slack Webhook URL
+        SLACK_CHANNEL     (optional): Slack room to post in. Default: #ansible
+        SLACK_USERNAME    (optional): Username to post as. Default: ansible
+        SLACK_INVOCATION  (optional): Show command line invocation
+                                      details. Default: False
+
+    Requires:
+        prettytable
+
+    """
+    CALLBACK_VERSION = 2.0
+    CALLBACK_TYPE = 'notification'
+    CALLBACK_NAME = 'slack'
+    CALLBACK_NEEDS_WHITELIST = True
+
+...
+
+    def send_msg(self, attachments):
+        payload = {
+            'channel': self.channel,
+            'username': self.username,
+            'attachments': attachments,
+            'parse': 'none',
+            'icon_url': ('http://www.ansible.com/hs-fs/hub/330046/file-449187601-png/ansible_badge.png'),
+        }
+
+        data = json.dumps(payload)
+        self._display.debug(data)
+        self._display.debug(self.webhook_url)
+        try:
+            response = open_url(self.webhook_url, data=data)
+            return response.read()
+        except Exception as e:
+            self._display.warning('Could not submit message to Slack: %s' %
+                                  str(e))
+
+    def v2_playbook_on_play_start(self, play):
+        """Display Play start messages"""
+
+        name = play.name or 'Play name not specified (%s)' % play._uuid
+        msg = '*Starting play* (_%s_)\n\n*%s*' % (self.guid, name)
+        attachments = [
+            {
+                'fallback': msg,
+                'text': msg,
+                'color': 'warning',
+                'mrkdwn_in': ['text', 'fallback', 'fields'],
+            }
+        ]
+        self.send_msg(attachments=attachments)
+Callback plugins have very many entry points, which are triggered at various points in the executor engine. For a full listing, see the stubbed methods defined in CallbackBase (located in the 'plugins/callback/init.py' file).
+
+Press q to quit.
+
+In addition to action and callback plugins, there are connection plugins.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/callback$ cd ../connection
+
+Take a look at the selections.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/connection$ ls
+
+Everything in this list are things ansible can "control". A few pop out, ssh.py (OpenSSH), local.py, network_cli.py, and paramiko_ssh.py. By default, Ansible uses native OpenSSH, because it supports ControlPersist (a performance feature), Kerberos, and options in ~/.ssh/config such as Jump Host setup. If your control machine uses an older version of OpenSSH that does not support ControlPersist, Ansible will fallback to a Python implementation of OpenSSH called ‘Paramiko’. If you'd like, read more about connection plugins with the ansible-doc command.
+
+student@bchd:~/.local/lib/python3.10/site-packages/ansible/plugins/connection$ ansible-doc -t connection -l
+
+When you are done, press q to exit.
+
+If Ansible isn’t doing what you need it to do, write a plugin to make it do so! In most cases, it’s very easy to add new plugins to extend the power of Ansible.
+
+When writing a plugin, always use the provided base classes. The Ansible plugin loader (the main class responsible for finding and loading files with a specific plugin class) will ignore your plugin class if it doesn’t have the proper base class as a parent object. The great thing about base classes is that they provide a ton of pre-written methods so you don’t have to reinvent the wheel (or cargo-cult a bunch of code).
+
+Many other plugin systems exist, and typically each Ansible release will include new plugins. Spend some time clicking through the other subdirectories directories within /usr/local/lib/python3.10/dist-packages/ansible/plugins/
+
+That's it for this lab. Nothing to commit to git.

@@ -1,0 +1,288 @@
+Lab Objective
+This lab demonstrates how playbooks can be stream-lined by using the network agnostic modules. These modules are meant to work against most major vendors supported by Ansible. In all cases, the agnostic modules require the network_cli connection type to run.
+
+At this time, those modules are:
+
+The cli_command module:
+https://docs.ansible.com/ansible/latest/modules/cli_command_module.html
+
+The cli_config module:
+https://docs.ansible.com/ansible/latest/modules/cli_config_module.html
+
+Links to the latest information on Ansible Agnostic modules may be found here:
+https://docs.ansible.com/ansible/latest/network/index.html
+
+Curious if you should race out and rewrite your playbooks? Probably not. The first agnostic module was introduced in v2.7, another in v2.8, and we don't seem to see any development on new agnostic modules on v2.9. Moving forward, it's fine to use them, but Ansible does not appear to be in a race to deprecate old vendor specific modules.
+
+The possible values of ansible_network_os can be found here:
+https://github.com/ansible/ansible/blob/devel/docs/docsite/rst/network/user_guide/platform_index.rst
+
+This lab also demonstrates using group variables. When trying to organize your unique commands or secrets, you must stay organized. One way is with the inventory, another is with group variables, which are indirectly related to the inventory. To use group variable, first create a folder, group_vars. Inside this folder, you then create YAML files with the same name as groups found within your inventory.
+
+Procedure
+Let's begin by confirming that our inventory and ansible.cfg files are correct.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+This lab depends on students having SSH connectivity to admin@sw-1 and (or) admin@sw-2. If you do not currently have this environment, refer to previous labs, or see the instructor. Test connectivity to sw-1 as follows:
+
+student@bchd:~$ ssh admin@sw-1
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Test connectivity to sw-2 as follows:
+
+student@bchd:~$ ssh admin@sw-2
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+We want to stay organized, so create a directory structure, ~/mycode/inv/dev/
+
+student@bchd:~$ mkdir -p ~/mycode/inv/dev/
+
+Create an inventory dedicated to our network hosts.
+
+student@bchd:~$ vim ~/mycode/inv/dev/nethosts
+
+Ensure that you have the following entry within your inventory (you can have other group entries, just ensure you have 'at least' the following)
+
+[allvendors:children]
+eosswitches
+iosswitches
+junosswitches
+nxosswitches
+vyosswitches
+
+[eosswitches]
+sw-1
+sw-2
+
+[eosswitches:vars]
+ansible_network_os=eos
+commandtoshowinterfaces="show ip int br"
+
+; additional switch vendors can be described within their own group
+; cisco ios switches could be described below
+[iosswitches]
+;sw-3
+;sw-4
+;
+;[iosswitches:vars]
+;ansible_network_os=ios
+;commandtoshowinterfaces="show ip int br"
+
+[junosswitches]
+;sw-5
+;sw-6
+;
+;[junosswitches:vars]
+;ansible_network_os=junos
+;commandtoshowinterfaces="show ip int br"
+;
+[nxosswitches]
+;sw-6
+;sw-7
+;
+;[nxosswitches:vars]
+;ansible_network_os=nxos
+;commandtoshowinterfaces="show ip int br"
+;
+[vyosswitches]
+;sw-8
+;sw-9
+;
+;[vyosswitches:vars]
+;ansible_network_os=vyos
+;commandtoshowinterfaces="show interface"
+Save and exit.
+
+Ensure your copy of ansible.cfg is accurate.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Your file should reflect the following values:
+
+[defaults]
+# default location of inventory
+# this can be a file or a directory
+inventory = /home/student/mycode/inv/dev/
+# prevents playbook from hanging on new connections
+host_key_checking = no
+Save and exit.
+
+Create a basic playbook file called ~/mycode/playbook-netagnostic.yml
+
+student@bchd:~$ vim ~/mycode/playbook-netagnostic.yml
+
+With some clever casting of group variables within our inventory, we were able to create a very simply playbook with the cli_command. No matter the vendor we run into, we'll always be returned a list of interfaces.
+
+---
+- name: Network Commands by Vendor
+  hosts: allvendors  # eosswitches is only active subgroup
+  gather_facts: no
+  vars_files:
+    - ~/switch.creds
+
+  tasks:
+  - name: Run an agnostic command
+    cli_command:
+      command: "{{ commandtoshowinterfaces }}"
+    register: results
+
+  - name: show results
+    debug:
+            var: results
+Save and exit.
+
+Create a file to store our credentials that we don't want to 'leak'. A sensible place is our home directory.
+
+student@bchd:~$ vim ~/switch.creds
+
+Make the following entry within your credential file.
+
+ansible_connection: network_cli
+ansible_become: yes
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Save and exit.
+
+Run the playbook. In our inventory, most of the vendors are commented out, therefore, your playbook should only run against the Arista EOS switches. Still, the proof-of-concept should be clear.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-netagnostic.yml -i ~/mycode/inv/dev/nethosts
+
+Let's try writing another network agnostic playbook. This time we'll also explore the concept of group variables. Create a directory called ~/mycode/group_vars/
+
+student@bchd:~$ mkdir -p ~/mycode/group_vars/
+
+Create a file called eosswitches.yml within the new directory. Remember, we have a group named eosswitches described within the inventory.
+
+student@bchd:~$ vim ~/mycode/group_vars/eosswitches.yml
+
+Create the following file.
+
+---
+backup: "show running-config"
+save: "copy running-config startup-config"
+ntp_commands: "ntp server 0.us.pool.ntp.org"
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Save and exit.
+
+Create a file called iosswitches.yml within the new directory. Remember, we have a group named iosswitches.
+
+student@bchd:~$ vim ~/mycode/group_vars/iosswitches.yml
+
+Create the following file.
+
+---
+backup: "show running-config"
+save: "write memory"
+ntp_commands: "ntp server 0.us.pool.ntp.org"
+ansible_become_method: enable
+ansible_user: cisco_admin
+ansible_ssh_pass: cisco_alta3
+Save and exit.
+
+We know that on an Arista EOS device and Cisco IOS, the command to get running config is show running-config, therefore both of our group_vars files have the same value for the variable backup. However the save commands are a bit different. An EOS expects copy running-config startup-config, whereas the IOS expects write memory. In the following playbooks, we can reference these different values that were set within the group_vars files. The secret, was naming the files the same as groups found within the inventory, ~/mycode/inv/dev/nethosts.
+
+student@bchd:~$ vim ~/mycode/playbook-agnostic-backup-gvars.yml
+
+Create the following playbook.
+
+---
+- name: backup all switch configs
+  hosts: eosswitches:iosswitches   # these two groups
+  gather_facts: false
+  become: yes # run the entire playbook as enable
+  connection: network_cli # required mode
+
+  # no vars section but we have our
+  # group vars that should be read into
+  # our playbook along with our inventory
+
+  tasks:
+
+    - name: pull backup from switches
+      cli_command:
+        command: "{{backup}}"
+      register: backup
+
+    - name: ensure backup directory is created
+      file:
+        path: ~/mycode/backup/
+        state: directory
+
+    - name: write out the backup to a file
+      copy:
+        content: "{{backup.stdout}}"
+        dest: "~/mycode/backup/{{inventory_hostname}}.backup"
+Save and exit.
+
+Run the playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-agnostic-backup-gvars.yml
+
+Confirm backup files were created.
+
+student@bchd:~$ ls ~/mycode/backup/
+
+Now let's write a playbook that makes a change to the running configuration using the agnostic modules. This change will reference the ntp_commands var defined in our /group_vars/ to update our switches as to the correct ntp server to use.
+
+student@bchd:~$ vim ~/mycode/playbook-agnostic-ntpchange.yml
+
+Create the following playbook.
+
+---
+- name: change switch configuration
+  hosts: eosswitches:iosswitches   # these two groups
+  gather_facts: false
+  become: yes # run the entire playbook as enable
+  connection: network_cli # required mode
+
+  tasks:
+
+    - name: load new NTP configuration
+      cli_config:
+        config: "{{ntp_commands}}"
+      notify:
+        - save and commit
+
+  handlers:
+    # handlers only run if a task runs that
+    # notifies the handler to run
+    - name: save and commit  # this name matches the notify
+      cli_command:
+        command: "{{save}}"
+Save and exit.
+
+Try running your playbook that updates the switch configs.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-agnostic-ntpchange.yml
+
+A good way to check if the update was successful, might be to use to backup playbook we wrote a moment ago to pull the current config.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-agnostic-backup-gvars.yml
+
+Look at the current config in one (or both) of the switches to ensure they are using the updated ntp server 0.us.pool.ntp.org.
+
+student@bchd:~$ cat ~/mycode/backup/sw-1.backup
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "network cli modules"
+git push origin
+cd ~/
+

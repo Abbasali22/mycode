@@ -1,0 +1,193 @@
+Lab Objective
+This lab demonstrates using network playbooks with vendor specific modules. The modules demonstrated within this lab can be found here:
+- Run one or more commands on:
+- EOS devices - https://docs.ansible.com/ansible/latest/modules/eos_command_module.html
+- Cisco NXOS devices - https://docs.ansible.com/ansible/latest/modules/nxos_command_module.html
+- VyOS devices - https://docs.ansible.com/ansible/latest/modules/vyos_command_module.html
+
+The possible values of ansible_network_os can be found here:
+https://github.com/ansible/ansible/blob/devel/docs/docsite/rst/network/user_guide/platform_index.rst
+
+Procedure
+Let's begin by confirming that our inventory and ansible.cfg files are correct.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+This lab depends on students having SSH connectivity to admin@sw-1 and (or) admin@sw-2. If you do not currently have this environment, refer to previous labs, or see the instructor. Test connectivity to sw-1 as follows:
+
+student@bchd:~$ ssh admin@sw-1
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Test connectivity to sw-2 as follows:
+
+student@bchd:~$ ssh admin@sw-2
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+List all of the arista.eos modules
+
+student@bchd:~$ ansible-doc -l arista.eos
+
+Read about the arista.eos.eos_command module. If the page scrolls beyond the first screen, use up and down to scroll, press q to quit.
+
+student@bchd:~$ ansible-doc arista.eos.eos_command
+
+List all of the cisco.nxos modules
+
+student@bchd:~$ ansible-doc -l cisco.nxos
+
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+We want to stay organized, so create a directory structure, ~/mycode/inv/dev/
+
+student@bchd:~$ mkdir -p ~/mycode/inv/dev/
+
+Create an inventory dedicated to our network hosts.
+
+student@bchd:~$ vim ~/mycode/inv/dev/nethosts
+
+Ensure that you have the following entry within your inventory (you can have other group entries, just ensure you have 'at least' the following).
+
+[allvendors:children]
+eosswitches
+iosswitches
+junosswitches
+nxosswitches
+vyosswitches
+
+[eosswitches]
+sw-1
+sw-2
+
+[eosswitches:vars]
+ansible_network_os=eos
+
+; additional switch vendors can be described within their own group
+; cisco ios switches could be described below
+[iosswitches]
+;sw-3
+;sw-4
+;
+;[iosswitches:vars]
+;ansible_network_os=ios
+;
+[junosswitches]
+;sw-5
+;sw-6
+;
+;[junosswitches:vars]
+;ansible_network_os=junos
+;
+[nxosswitches]
+;sw-6
+;sw-7
+;
+;[nxosswitches:vars]
+;ansible_network_os=nxos
+;
+[vyosswitches]
+;sw-8
+;sw-9
+;
+;[vyosswitches:vars]
+;ansible_network_os=vyos
+Save and exit.
+
+Ensure your copy of ansible.cfg is accurate.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Your file should reflect the following values:
+
+[defaults]
+# default location of inventory
+# this can be a file or a directory
+inventory = /home/student/mycode/inv/dev/
+# prevents playbook from hanging on new connections
+host_key_checking = no
+Save and exit.
+
+Each vendor has their own vendor specific module through which we can issue the appropriate command to display interfaces on the device. To prevent running the wrong module on the wrong switch, we need to use the when statement to test against ansible_network_os, which is required mapping when working in network_cli mode.
+
+Our goal is to build a playbook that could log into all of the switches within our inventory, regardless of vendor. The classic approach to this challenge, is to create a playbook with calls to all possible vendor products within your network, via the vendor specific modules. In short, this means LOTS of double work. Consider the following playbook where we have Arista EOS, Cisco NXOS, and Vyos vendors. Create a basic playbook file called ~/mycode/playbook-netvendors.yml
+
+student@bchd:~$ vim ~/mycode/playbook-netvendors.yml
+
+Create the following playbook:
+
+---
+- name: Network Commands by Vendor  
+  hosts: allvendors
+  gather_facts: no
+
+  vars_files:
+    - ~/switch.creds
+
+  tasks:
+    - name: Run Arista command
+      eos_command:
+        commands: show ip int br
+      when: ansible_network_os == 'eos'
+      register: eresult
+
+    - name: show eresult
+      debug:
+        var: eresult
+
+    - name: Run Cisco NXOS command
+      nxos_command:
+        commands: show ip int br
+      when: ansible_network_os == 'nxos'
+      register: nxresult
+      
+    - name: show nxresult
+      debug:
+        var: nxresult
+      when: ansible_network_os == 'nxos'
+
+    - name: Run Vyos command
+      vyos_command:
+        commands: show interface
+      when: ansible_network_os == 'vyos'
+      register: vresult
+
+    - name: show vresult
+      debug:
+        var: vresult
+      when: ansible_network_os == 'vyos'
+Save and exit.
+
+Create a file to store our credentials that we don't want to 'leak'. A sensible place is our home directory.
+
+student@bchd:~$ vim ~/switch.creds
+
+Make the following entry within your credential file.
+
+ansible_connection: network_cli
+ansible_become: yes
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Save and exit.
+
+Run the playbook. In our inventory, most of the vendors are commented out, therefore, your playbook should only run against the Arista EOS switches. Still, the proof-of-concept should be clear.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-netvendors.yml -i ~/mycode/inv/dev/nethosts
+
+There is a different way to handle issuing network commands within a 'mixed' vendor environment, which is by using the 'agnostic' modules. Agnostic modules work on all major vendors and attempt to simplify the creation of playbooks. A different lab is dedicated to exploring this concept.
+
+That's it for this lab. If you tracking your work on an SCM perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "network backup"
+git push origin
+cd ~/

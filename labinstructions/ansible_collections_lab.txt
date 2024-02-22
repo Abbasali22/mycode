@@ -1,0 +1,171 @@
+Lab Objective
+The objective of this lab is to understand the purpose of Ansible collections. New in Ansible v2.9, collections are the future of content delivery for Ansible. Traditionally, module creators have had to wait for their modules to be marked for inclusion in an upcoming Ansible release or had to add them to roles, which made consumption and management more difficult.
+
+With Ansible collections, pertinent roles and documentation, creators now have a chance of keeping up with demand. For example, a public cloud provider can offer new functionality of an existing service or a new service altogether, along with offering consumers an easy way to update Ansible allowing automation of the new functionality.
+
+Ansible Collections
+
+For the automation consumer, this means that fresh content is continuously made available for consumption. Managing content in this manner also becomes easier as modules, plugins, roles, and docs are packaged and tagged with a collection version. Modules can be updated, renamed, improved upon; roles can be updated to reflect changes in module interaction; docs can be regenerated to reflect the edits and all are packaged and tagged together.
+
+Review the official collection structure:
+https://docs.ansible.com/ansible/devel/dev_guide/developing_collections_structure.html
+
+Procedure
+Let's start by exploring what it takes to build a collection.
+
+student@bchd:~$ mkdir -p ~/mycode/collections/
+
+Move into the new directory
+
+student@bchd:~$ cd ~/mycode/collections
+
+The application tree has nothing to do with Ansible, but will let us "see" directory structures easier. Install tree now.
+
+student@bchd:~/mycode/collections$ sudo apt install tree
+
+Just like a role, the collection skeleton can be started with the ansible-galaxy command. If you'd like, replace adalovelace with your name.
+
+student@bchd:~/mycode/collections$ ansible-galaxy collection init adalovelace.myfirstcollection
+
+In the above command, adalovelace is a "namespace". Don't read into it too much, it ends up just being a folder named adalovelace that is used to keep things organized. The collection itself will be called myfirstcollection.
+
+Run tree so we can see what just happened.
+
+student@bchd:~/mycode/collections$ tree
+
+Here is a short rundown of each file and folder within a collection. Note: This is a bit of a moving target. If you see additional files and folders, or fewer, "Don't panic!" Collections are an evolving concept. We expect this tool to generate different content over the next few months or years:
+
+README.md: What is this collection about
+galaxy.yml: Contains metadata about your collection
+docs/: local documentation for the collection
+playbooks/: playbooks reside here
+playbooks/tasks/: this holds 'task list files' for include_tasks/import_tasks usage
+plugins/: all ansible plugins and modules go here, each in its own subdir
+(example) plugins/modules/: ansible modules
+(example) plugins/lookups/: lookup plugins
+(example) plugins/filters/: Jinja2 filter plugins
+plugins/... rest of plugins
+README.md: a description of the new functionality provided by the plugins
+roles/: directory for ansible roles
+A few of those files mentioned didn't appear when we ran the ansible-galaxy command, and that's OK. You can add directories as necessary.
+
+Collections are a flexible concept. They're focus is content delivery. That might mean playbooks, plugins, roles, or more.
+
+In a previous lab you might have written your own Ansible module. If you have, try copying it into the plugins/modules/ folder. Next, fill out galaxy.yml to the best of your ability, and you're done! Yep, a collection is that easy!
+
+One you've put your collection together, it is time to build the collection. This creates a tarball and compresses the file. The command is always run in the relative root of your collection.
+
+student@bchd:~/mycode/collections$ cd ~/mycode/collections/adalovelace/myfirstcollection
+
+Now run the build command to create the collection.
+
+student@bchd:~/mycode/collections$ ansible-galaxy collection build
+
+Notice that the version on the collection corresponds to the version within the galaxy.yml manifest. With a bit of planning, this version could also map to a current release of some service or platform that it interacts with. This tarball is mainly intended to upload to Galaxy as a distribution method, but you can use it directly to install the collection on target systems.
+
+NOTE: If you see anything related to the now-deprecated Mazer tool for any of your collections, delete any and all files it added to your releases/directory before you build your collection with ansible-galaxy.
+
+Try installing your collection to make it usable to the system. The command below will install it to one of the configured collection directories (defined in ~/.ansible.cfg).
+
+student@bchd:~/mycode/collections$ ansible-galaxy collection install adalovelace-myfirstcollection-1.0.0.tar.gz
+
+If you want to install your collection to a target directory, you can use -p /path/to/collection/directory/. If your playbook is adjacent to the directory, it will find the collection, otherwise, it is necessary to update the collection search paths by editing ~/.ansible.cfg and adding the new directory to collections_paths.
+
+Create a playbook to try using the new collection.
+
+student@bchd:~/mycode/collections$ vim ~/mycode/collection01-playbook.yaml
+
+Create the following playbook
+
+---
+- name: use role distributed with collection
+  hosts: localhost # defined by inventory
+  connection: ssh  # default connection type
+  gather_facts: no # no need to collect ansible_facts
+
+  # this is the collection we want to make part of this playbook namespace
+  collections:
+  - adalovelace.myfirstcollection
+
+  tasks:
+  - name: Example of how to use a collection
+    debug:
+      msg: "Any new modules, roles, or other distributables included in the role would not be usable!"
+Save and exit with :wq
+
+Try running the playbook. Even if your collection is empty, that's okay. Just confirm that it doesn't error out.
+
+student@bchd:~/mycode/collections$ ansible-playbook ~/mycode/collection01-playbook.yaml
+
+READ ONLY - Once a collection has been installed, you can reference any of its components using a Fully Qualified Collection Name (FQCN).
+
+- name: Use collection components without using the keyword "collection"
+  hosts: all
+
+  tasks:
+    - my_namespace.my_collection.mymodule:
+        option1: value
+READ ONLY - This technique works for roles or any type of plugin distributed within the collection:
+
+- name: Using collection components
+
+  hosts: all
+  tasks:
+    # use role1 from adalovelace.myfirstcollection
+    - import_role:
+        name: adalovelace.myfirstcollection.role1
+
+    # use a custom module "mymodule" located in namespace buzzaldrin within the collection apollo
+    - name: Use the custom "mymodule"
+      buzzaldrin.apollo.mymodule:
+        option1: value
+
+    - name: Use custom lookup and filter plugins from the collection
+      debug:
+        msg: '{{ lookup("adalovelace.myfirstcollection.lookup1", 'param1')| adalovelace.myfirstcollection.filter1 }}'
+READ ONLY - Using the collections keyword simply prevents excessive typing.
+
+- name: Using the collections keyword
+  hosts: all
+
+  # multiple collections may be imported
+  collections:
+   - adalovelace.myfirstcollection
+   - buzzaldrin.apollo
+
+  tasks:
+    # use role1 from adalovelace.myfirstcollection
+    - import_role:
+        name: role1
+
+    # use a custom module "mymodule" located in namespace buzzaldrin within the collection apollo
+    - name: Use the custom "mymodule" from within the buzzaldrin namespace
+      mymodule:
+        option1: value
+
+    - name: You still need to use FQCN for non-action plugins
+      debug:
+        msg: '{{ lookup("adalovelace.myfirstcollection.lookup1", 'param1')| adalovelace.myfirstcollection.filter1 }}'
+The "collections" keyword creates a search path for non-namespaced plugin references. It does not import roles or anything else. Notice that you still need the FQCN for non-action or module plugins.
+
+If you'd like to publish your collection to Ansible Galaxy, you can do so with ansible-galaxy collection publish. Once you publish a version to Galaxy, it cannot be changed. So, make sure you're careful about what you publish. For more information on publishing a collection to Galaxy, see https://docs.ansible.com/ansible/latest/dev_guide/developing_collections.html#publishing-collections
+
+CHALLENGE 01 - Try building a collection for the custom modules available on https://github.com/rzfeeser/ansible-custom-modules-nasa-api
+
+SOLUTION 01 - Create a collection with collection init. Clone the repository. Copy the library files into the collection at plugins/modules/. Perform a collection build and then a collection install to access the collection.
+
+Answer the following questions:
+
+Q: What are collections?
+A: Collections make it easy to distribute content. Dell could release a new product, and on the same day, release a collection that allows Ansible to support that new product. Collections make it easy to augment your ansible controller.
+Q: Will I need to make collections?
+A: Not necessarily. It is important to understand how they work, and how to use them, but you may never need to actually build one. Remember, they are for content delivery. The question is similar to, "Do I have to write libraries in Python to be successful with python?" Of course the answer to that question is "No." You can go very far with Python without ever designing a library for import.
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "collections"
+git push origin
+cd ~/
+

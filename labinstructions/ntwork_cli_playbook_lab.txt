@@ -1,0 +1,145 @@
+Lab Objective
+In this lab, we'll explore Ansible's native support for configuration and management of switches and routers. A good place to get started is http://docs.ansible.com/ansible/latest/network/getting_started/network_differences.html. Below is actually a summary of the 'important stuff'.
+
+Unlike most Ansible modules, network modules do not run on the managed nodes. From a user’s point of view, network modules work like any other modules. Because the majority of network devices cannot run Python, the Ansible network modules are executed on the Ansible control node, where ansible or ansible-playbook runs.
+
+Network modules do not run every task in a playbook. They request current config first, compare current config to the state described by the task or playbook, and execute a task only if it changes the state of the managed node.
+
+Network modules, that offer a backup option (not all do), write the backup files onto the control node. With Linux/Unix modules, where a configuration file already exists on the managed node(s), the backup file gets written by default in the same directory as the new, changed file. Network modules do not update configuration files on the managed nodes, because network configuration is not written in files. Network modules write backup files on the control node, in the backup directory under the playbook root directory.
+
+Procedure
+Let's begin by confirming that our inventory and ansible.cfg files are correct.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+This lab depends on students having SSH connectivity to admin@sw-1 and (or) admin@sw-2. If you do not currently have this environment, refer to previous labs, or see the instructor. Test connectivity to sw-1 as follows:
+
+student@bchd:~$ ssh admin@sw-1
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Test connectivity to sw-2 as follows:
+
+student@bchd:~$ ssh admin@sw-2
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Create a basic playbook file called ~/mycode/playbook-netswitch.yml.
+
+student@bchd:~$ vim ~/mycode/playbook-netswitch.yml
+
+Before you go any further, review the documentation on the Arista EOS banner module: http://docs.ansible.com/ansible/latest/modules/eos_banner_module.html
+
+You may also want to search for eos on the network-device modules Ansible documentation page. Arista has quite a few EOS modules already written an approved by Arista for Ansible. These all come along with Ansible, when you install the Ansible product. http://docs.ansible.com/ansible/latest/modules/list_of_network_modules.html.
+
+Our goal, for now, will be to change (or possibly deploy) a login banner.
+
+Create the following basic playbook.
+
+- name: My Arista Playbook
+  hosts: switches
+  gather_facts: false
+
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: eos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: admin
+    ansible_ssh_pass: alta3
+
+  tasks:
+  - name: configure the login banner
+    eos_banner:
+      banner: login
+      text: |
+        Congrats! You set a banner using an Ansible EOS module.
+        Notice how YAML formatting lets us do multi-line
+        strings
+      state: present
+Save and exit.
+
+All that is left to do is run our playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-netswitch.yml -i ~/mycode/inv/dev/hosts
+
+Confirm the playbook worked. SSH to the first switch.
+
+student@bchd:~$ ssh admin@sw-1
+
+You should be greeted by a login banner. Press CTRL+C to abort the login process.
+
+Determine if the sw-2 banner was set.
+
+student@bchd:~$ ssh admin@sw-2
+
+You should be greeted by a login banner. Press CTRL+C to abort the login process.
+
+Run the playbook a second time. Confirm that no changes were made this time (you should ONLY get green OK, which indicates no changes were made by Ansible).
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-netswitch.yml -i ~/mycode/inv/dev/hosts
+
+Let's upgrade our playbook so it is easy to remove our banner. Create a new playbook, ~/mycode/playbook-netswitch.yml.
+
+student@bchd:~$ vim ~/mycode/playbook-netswitch02.yml
+
+Create the following basic playbook.
+
+- name: My Arista Playbook
+  hosts: switches
+  gather_facts: false
+
+  vars_files:
+    - ~/switch.creds
+
+  tasks:
+  - name: configure the login banner
+    eos_banner:
+      banner: login
+      text: |
+        Congrats! You set a banner using an Ansible EOS module.
+        Notice how YAML formatting lets us do multi-line
+        strings
+      state: "{{ herethere }}"
+Save and exit.
+
+Create a file to store our credentials that we don't want to 'leak'. A sensible place is our home directory.
+
+student@bchd:~$ vim ~/switch.creds
+
+Make the following entry within your credential file.
+
+ansible_connection: network_cli
+ansible_network_os: eos
+ansible_become: yes
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Save and exit.
+
+Run the upgraded playbook. Pass an extra variable to remove the banner we set.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-netswitch02.yml -i ~/mycode/inv/dev/hosts -e herethere=absent
+
+The playbook should indicate a change. Confirm the playbook removed the banner. SSH to the first switch.
+
+student@bchd:~$ ssh admin@sw-1
+
+You should not be greeted by a login banner. Press CTRL+C to abort the login process.
+
+Determine if the sw-2 banner also removed.
+
+student@bchd:~$ ssh admin@sw-2
+
+You should no longer be greeted by a login banner. Press CTRL+C to abort the login process.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "ansible for network operations"
+git push origin
+cd ~/

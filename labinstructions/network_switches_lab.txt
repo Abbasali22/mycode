@@ -1,0 +1,168 @@
+
+Lab Objective
+The objective of this lab is to explore two production switches that are ready for you to target with an Ansible playbook. Both of these switches can be reached by using the following patterns:
+
+ssh admin@sw-1 <- pw alta3
+ssh admin@sw-2 <- pw alta3
+The switches are already to use, so this lab is just about proof-of-concept testing our switches.
+
+Connection to switches (typically) requires ansible_connection: network_cli. A matrix of possible combinations is maintained here, and a useful reference for those interested in Ansible and network operations:
+https://github.com/ansible/ansible/blob/devel/docs/docsite/rst/network/user_guide/platform_index.rst
+
+Procedure
+Let's begin by confirming that our inventory and ansible.cfg files are correct.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+Ping your switches to ensure you're reaching them.
+
+student@bchd:~$ ping sw-1
+
+student@bchd:~$ ping sw-2
+
+We've come this far, let's write a quick playbook to test connectivity.
+
+student@bchd:~$ vim ~/mycode/playbook-eosfacts01.yml
+
+Make your playbook appear like the following:
+
+---
+- name: Network Playbook to gather facts
+  hosts: sw-1, sw-2
+  gather_facts: no
+
+  # these vars can be mapped other places
+  # but need to be mapped for ansible to
+  # connect to Arista switches
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: eos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: admin
+    ansible_ssh_pass: alta3
+
+  tasks:
+  - name: Gather EOS facts
+    eos_facts:
+      gather_subset: all
+Save and exit.
+
+Try running your playbook. We don't need an inventory because we gave hostnames that can be resolved by DNS.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-eosfacts01.yml -i "sw-2,sw-1"
+
+It should work, but the output isn't verbose. Edit your playbook.
+
+student@bchd:~$ vim ~/mycode/playbook-eosfacts01.yml
+
+Add the following register: and debug: keywords.
+
+---
+- name: Network Playbook to gather facts
+  hosts: sw-1, sw-2
+  gather_facts: no
+
+  # these vars can be mapped other places
+  # but need to be mapped for ansible to
+  # connect to Arista switches
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: eos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: admin
+    ansible_ssh_pass: alta3
+
+  tasks:
+  - name: Gather EOS facts
+    eos_facts:
+      gather_subset: all
+    register: results
+
+  - name: Show registered facts
+    debug:
+      var: results
+Save and exit.
+
+Run your script again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-eosfacts01.yml -i "sw-2,sw-1"
+
+Write a new script.
+
+student@bchd:~$ vim ~/mycode/playbook-eosfacts02.yml
+
+It turns out that we don't need to register facts. They always are written to ansible_facts.
+
+---
+- name: Network Playbook to gather facts
+  hosts: sw-1, sw-2
+  gather_facts: no
+
+  # these vars can be mapped other places
+  # but need to be mapped for ansible to
+  # connect to Arista switches
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: eos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: admin
+    ansible_ssh_pass: alta3
+
+  tasks:
+  - name: Gather EOS facts
+    eos_facts:
+      gather_subset: all
+
+  - name: Show registered facts
+    debug:
+      var: ansible_facts
+Save and exit.
+
+Run your script again.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-eosfacts02.yml -i "sw-2,sw-1"
+
+Write a final version of your script.
+
+student@bchd:~$ vim ~/mycode/playbook-eosfacts03.yml
+
+Did you notice how we set ansible_network_os: eos? It turns out that variable will cause the gather_facts: yes setting to select the eos_facts as opposed to the setup module. This feature appeared in Ansible version 2.9, so don't depend on it working in your work setting if you're running anything prior to 2.9. Create the following very simple script.
+
+---
+- name: Network Playbook to gather facts
+  hosts: sw-1, sw-2
+  gather_facts: yes  # default is yes
+
+  # these vars can be mapped other places
+  # but need to be mapped for ansible to
+  # connect to Arista switches
+  vars:
+    ansible_connection: network_cli
+    ansible_network_os: eos
+    ansible_become: yes
+    ansible_become_method: enable
+    ansible_user: admin
+    ansible_ssh_pass: alta3
+
+  tasks:
+  - name: Show registered facts
+    debug:
+      var: ansible_facts
+Save and exit with :wq
+
+Run your new simple script.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-eosfacts03.yml -i "sw-2,sw-1"
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "gather facts on network devices"
+git push origin
+cd ~/
+

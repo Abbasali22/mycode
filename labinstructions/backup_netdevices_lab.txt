@@ -1,0 +1,286 @@
+Lab Objective
+This lab demonstrates how to retrieve a running configuration with Ansible, and then save and archive it locally.
+
+Although you may use a different vendor, the lessons learned in this lab are transferable to almost any network vendor, as every vendor has their own version of the gather_facts module. To aid in your understanding, a number of playbooks are included in this lab for reference purposes.
+
+In this lab, you will perform the following tasks:
+
+Create an Ansible Playbook running various modules to collect configuration data from multiple network device types.
+Archive configurations to persistent storage.
+Explore how to gather facts from hosts not included in the inventory file.
+To achieve our backup, we'll use a combination of modules. Run the following commands to learn more about the code we'll use:
+
+eos_facts - ansible-doc eos_facts
+ios_facts - ansible-doc ios_facts
+nxos_facts - ansible-doc nxos_facts
+junos_facts - ansible-doc junos_facts
+bigip_device_facts - ansible-doc bigip_device_facts
+archive - ansible-doc archive
+file - ansible-doc file
+copy - ansible-doc copy
+The possible values of ansible_network_os can be found here:
+https://github.com/ansible/ansible/blob/devel/docs/docsite/rst/network/user_guide/platform_index.rst
+
+Procedure
+Let's begin by confirming that our inventory and ansible.cfg files are correct.
+
+student@bchd:~$ bash ~/px/scripts/full-setup.sh
+
+This lab depends on students having SSH connectivity to admin@sw-1 and (or) admin@sw-2. If you do not currently have this environment, refer to previous labs, or see the instructor. Test connectivity to sw-1 as follows:
+
+student@bchd:~$ ssh admin@sw-1
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Test connectivity to sw-2 as follows:
+
+student@bchd:~$ ssh admin@sw-2
+
+If prompted to accept the SSH key, say yes, and then type alta3 to connect.
+
+Type exit
+
+Change directory to the /home/student/ directory.
+
+student@bchd:~$ cd ~
+
+Before we begin working with switches, we'll need to install a pre-requisite: ansible-pylibssh.
+
+student@bchd:~$ python3 -m pip install ansible-pylibssh
+
+We want to stay organized, so create a directory structure, ~/mycode/inv/dev/
+
+student@bchd:~$ mkdir -p ~/mycode/inv/dev/
+
+Create an inventory dedicated to our network hosts.
+
+student@bchd:~$ vim ~/mycode/inv/dev/nethosts
+
+Ensure that you have the following entry within your inventory (you can have other group entries, just ensure you have 'at least' the following).
+
+[eosswitches]
+sw-1
+sw-2
+
+[eosswitches:vars]
+ansible_network_os=eos
+Save and exit.
+
+Ensure your copy of ansible.cfg is accurate.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Your file should reflect the following values:
+
+[defaults]
+# default location of inventory
+# this can be a file or a directory
+inventory = /home/student/mycode/inv/dev/
+# prevents playbook from hanging on new connections
+host_key_checking = no
+
+# define where the latest version of python resides
+# useful when running network_cli playbook where some modules
+# run against the localhost
+interpreter_python = /usr/bin/python3
+Save and exit.
+
+Create a basic playbook file called ~/mycode/playbook-eos-confbackup.yml
+
+student@bchd:~$ vim ~/mycode/playbook-eos-confbackup.yml
+
+Our task is to log into both of our Arista EOS switches, harvest their running configurations, save those files locally on our controller, and then archive those files. To complete this challenge, create the following basic playbook.
+
+---
+- name: Arista Config Saver
+  hosts: eosswitches
+  # collect facts about controller
+  # so that ansible_date_time is defined
+  gather_facts: yes
+
+  # location on the controller
+  vars_files:
+    - ~/switch.creds
+
+  tasks:
+  - name: Arista Fact Collection
+    eos_facts:
+      gather_subset: all  # IMPORTANT! Look at the Return values at the bottom of the eos_facts module
+
+  - name: get the current date
+    command: date "+%Y-%m-%d"
+    register: result
+    vars:
+      ansible_connection: local
+
+  - name: set a variable to make date easier
+    ansible.builtin.set_fact:
+      date_now: "{{ result.stdout }}"
+
+  - name: Create dir to save switch config backups
+    ansible.builtin.file:
+      path: ~/mycode/backup/{{ date_now }}/
+      state: directory    # Playbook will FAIL without this directory
+
+  - name: Arista Config Save        
+    ansible.builtin.copy:
+      content: "{{ ansible_net_config }}"
+      dest: "~/mycode/backup/{{ date_now }}/{{ inventory_hostname }}-config.backup"
+
+  - name: Arista Archival Process
+    archive:
+      path: "~/mycode/backup/{{ date_now }}/{{ inventory_hostname }}-config.backup"
+      remove: True     # removes the original file
+Save and exit.
+
+Create a file to store our credentials that we don't want to 'leak'. A sensible place is our home directory.
+
+student@bchd:~$ vim ~/switch.creds
+
+Make the following entry within your credential file.
+
+ansible_connection: network_cli
+ansible_become: yes
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Save and exit.
+
+Run the upgraded playbook. When it finishes, it should have harvested the switch configuration from the Arista EOS switches. This technique works because, while ansible_connection: network_cli is a required parameter when writing network playbooks, however, it causes any 'server modules' (those like file, copy, and archive) to run in the equivalent of localhost mode.
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-eos-confbackup.yml
+
+Confirm the playbooks worked. Look in the folder ~/mycode/backup/. This folder was created by the file module.
+
+student@bchd:~$ ls ~/mycode/backup/
+
+Within the backup folder you should see another folder with today's date. Within that folder should two switch configs, sw-1-config.backup.gz, and sw-2-config.backup.gz. If you care to, either file may be opened with gunzip <filename>
+
+Regardless of your vendor, a *_facts module should exist. Just swap out eos_facts with the appropriate vendor specific module! However, what if you're in an environment with a mixed set of vendors? A classic way to solve this problem has been to employ a highly organized inventory, grouping by inventory, and then mapping the variable ansible_network_os (required for connection purposes anyway), to all of those in the group via a group var. Let's try out this technique.
+
+Let's review a our inventory dedicated to our network devices.
+
+student@bchd:~$ batcat ~/mycode/inv/dev/nethosts -l ini
+
+───────┬─────────────────────────────────────────────────────────────
+       │ File: /home/student/mycode/inv/dev/nethosts
+───────┼─────────────────────────────────────────────────────────────
+   1   │ [allvendors:children]
+   2   │ eosswitches
+   3   │ iosswitches
+   4   │ junosswitches
+   5   │ nxosswitches
+... TRUNCATED ...
+Create the following playbook, which is a common solution for gathering the current configuration of your network devices:
+
+student@bchd:~$ vim ~/mycode/playbook-mixedvendors_v28.yml
+
+Create the following:
+
+---
+- name: Network Switch Config Saver
+  hosts: allvendors
+  gather_facts: yes
+
+  vars_files:
+    - ~/switch.creds
+
+  tasks:
+    # Ansible Date Time not available from eos/ios devices
+    # Therefore: We need to update ansible date/time 
+    #            from the controller
+    - name: update ansible date/time from local host
+      setup:
+        gather_subset:
+          - 'min'
+      connection: ansible.builtin.local    # change from network_cli to local for this task
+      run_once: true   # we don't want to run this task for as many switches as we have in the inventory. just once
+
+
+    - name: Gather EOS config only
+      eos_facts:
+        gather_subset:
+          - config
+      when: ansible_network_os == "eos"
+
+    - name: let's check out the EOS config
+      ansible.builtin.debug:
+        var: ansible_net_config
+
+    - name: Cisco IOS fact collection
+      ios_facts:
+        gather_subset:
+        - config
+      when: ansible_network_os == "ios"
+
+    - name: Cisco NXOS fact collection
+      nxos_facts:
+        gather_subset:
+        - config
+      when: ansible_network_os == "nxos"
+
+    - name: Juniper JunOS fact collection
+      junos_facts:
+        gather_subset:
+        - config
+      when: ansible_network_os == "junos"
+
+    - name: VyOS fact collection
+      vyos_facts:
+        gather_subset:
+        - config
+      when: ansible_network_os == "vyos"
+
+    - name: Create dir to save switch config backups
+      ansible.builtin.file:
+        path: ~/mycode/backup/{{ ansible_date_time.date }}/
+        state: directory
+      connection: ansible.builtin.local    # change from network_cli to local for this task
+      run_once: true   # we don't want to run this task for as many switches as we have in the inventory. just once
+
+    - name: Save out backed up configuration
+      ansible.builtin.copy:
+        content: "{{ ansible_net_config }}"
+        dest: "~/mycode/backup/{{ ansible_date_time.date }}/{{ inventory_hostname }}-config.backup"
+
+    - name: Archival process
+      archive:
+        path: "~/mycode/backup/{{ ansible_date_time.date }}/{{ inventory_hostname }}-config.backup"
+        remove: True     # removes the original file
+To save and quit out of vim, press ESC and then type :wq.
+
+Let's give the playbook a spin!
+
+student@bchd:~$ ansible-playbook ~/mycode/playbook-mixedvendors_v28.yml
+
+Take a look at the output from the task, 'let's check out the EOS config'. This include ALL of the current configurations of your network devices! Super handy!
+
+TASK [let's check out the EOS config] ******************************************
+ok: [sw-1] => {                                                 
+    "ansible_net_config": "! Command: show running-config\n! device: arista (vEOS, EOS-4.22.0F)\n!\n! boot system flash:/vEOS-lab.swi\
+n!\ntransceiver qsfp default-mode 4x10G\n!\nhostname arista\n!\nspanning-tree mode mstp\n!\nno aaa root\n!\nusername admin role networ
+k-admin secret sha512 $6$zxdYqIFC1Aublu98$DIUleRmC7u7qT8r62sKK1QxnBlwry1FXMU/WBpi2ss410BOVQDx6qRr1BXtTc/JG9hs2AlxPVJ11pgz6z1EF7.\n!\ni
+nterface Management1\n   ip address dhcp\n   dhcp client accept default-route\n!\nno ip routing\n!\nend"
+}                                                               
+... TRUNCATED ...
+Install tree to help check on the backups.
+
+student@bchd:~$ sudo apt install tree -y
+
+Ensure the backups of both switches are present in a directory with the current date.
+
+student@bchd:~$ tree ~/mycode/backup/
+
+Great job! That's it for this lab.
+
+That's it for this lab. If you tracking your work on an SCM, perform the following operations.
+
+cd ~/mycode
+git status
+git add /home/student/mycode/*
+git commit -m "network cli multivendor"
+git push origin
+cd ~/
+

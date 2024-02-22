@@ -1,0 +1,158 @@
+Lab Objective
+The objective of this lab is to teach students how Ansible Galaxy the website, as well as the CLI tool, may be used together for role management. Ansible Galaxy is comprised of two parts; a website (Ansible Galaxy), and a CLI tool (that installs with Ansible). The relationship here is analogous to that of Python's pypi.org (website), and Python's pip. One is a visual aide for sharing code, the other is a CLI tool for harvesting that code.
+
+The Ansible Galaxy website allows users to share roles; effectively it points to repos on GitHub where roles are actually stored.
+
+The Ansible Galaxy CLI tool, ansible-galaxy, allows users to interact with roles described on the website. Using the CLI tool, users can install, create and manage roles locally.
+
+Visit the Ansible Galaxy here: https://galaxy.ansible.com
+
+Procedure
+Open a webpage to https://galaxy.ansible.com
+
+Create a new directory to work in.
+
+student@bchd:~$ mkdir -p ~/galaxy/roles
+
+The ansible-galaxy downloads roles to the path specified by the environment variable ANSIBLE_ROLES_PATH. When Ansible is first installed it defaults to /etc/ansible/roles, which requires root privileges. Override this by setting the environment variable in your session, defining roles_path in an ansible.cfg file, or by using the –roles-path option. To start, set roles_path within ~/.ansible.cfg.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+Copy and paste the following into ~/.ansible.cfg. This will control where Ansible Galaxy downloads roles to. By the way, it is alright if other values exist within config file.
+
+[defaults]
+roles_path=~/galaxy/roles/
+
+# if you never SSH'd to a device before
+# this setting will prevent Ansible from hanging / failing on the connection
+host_key_checking = False
+Save and exit with :wq
+
+Let's try out our work. Roles can be installed from Ansible-Galaxy. There is plenty to explore. Let's start with one from an Alta3 Research instructor, Zach Feeser. Check out the home page here: https://galaxy.ansible.com/rzfeeser/ansible_role_minecraft
+
+Looks like this role installs a Minecraft server on the machine it is run on. Cool! Try installing the role with the ansible-galaxy command found on the webpage.
+
+student@bchd:~$ ansible-galaxy install rzfeeser.ansible_role_minecraft
+
+Check out the results of our work. Move into the directory we described within ansible.cfg.
+
+student@bchd:~$ cd /home/student/galaxy/roles
+
+Run tree.
+
+student@bchd:~/galaxy/roles$ tree
+
+Note that the role name, rzfeeser.ansible_role_minecraft is simply the name of the parent directory. All of the subsequent directories are related to that role. Roles typically begin with rolename/tasks/main.yml (but not always). Check that file out now:
+
+student@bchd:~/galaxy/roles$ cat rzfeeser.ansible_role_minecraft/tasks/main.yml
+
+Looks like main.yml would point us to the file deployonubuntu.yml, provided we were running on a Debian system. The variable ansible_os_family is defined by gather_facts: yes
+
+student@bchd:~/galaxy/roles$ cat rzfeeser.ansible_role_minecraft/tasks/deployonubuntu.yml
+
+Explore the rest of the role if you'd like. There are roles on the Galaxy to do all manner of things, including, expand Ansible's code base.
+
+Should we wish to create a new role, the ansible-galaxy CLI tool will stub a role template. Type the following:
+
+student@bchd:~/galaxy/roles$ ansible-galaxy role init ~/galaxy/roles/arista_backup
+
+Explore the various folders and standard role structure the ansible-galaxy template just created for you. In this case, our role is named, arista_backup. Run tree to see the standard structure for a role.
+
+student@bchd:~/galaxy/roles$ tree arista_backup/
+
+Let's see if we can build out this role. Begin by editing ~/galaxy/roles/arista_backup/tasks/main.yml
+
+student@bchd:~/galaxy/roles$ vim ~/galaxy/roles/arista_backup/tasks/main.yml
+
+Create the following tasks/main.yml
+
+---
+# tasks file for /home/student/galaxy/roles/arista_backup
+# define current date
+- name: Arista EOS fact collection
+  eos_facts:
+    gather_subset: all  # IMPORTANT! Look at the Return values at the bottom of the eos_facts
+  when: ansible_network_os == "eos"
+  
+- name: get the current date
+  command: date "+%Y-%m-%d"
+  register: result
+  vars:
+    ansible_connection: local
+
+# set a fact to make things easier
+- name: set a variable to make date easier
+  set_fact:
+    date_now: "{{ result.stdout }}"          
+
+# build backup directory based on the current date
+- name: Create dir "{{ date_now }}" to save current switch config backups
+  file:
+    path: "~/mycode/backup/{{ date_now }}/"
+    state: directory    # Playbook will FAIL without this directory
+
+- name: Save out backed up configuration       
+  copy:
+    content: "{{ ansible_net_config }}"
+    dest: "~/mycode/backup/{{ date_now }}/{{ inventory_hostname }}-config.backup"
+
+- name: Archival process
+  archive:
+    path: "~/mycode/backup/{{ date_now }}/{{ inventory_hostname }}-config.backup"
+    remove: True     # removes the original file
+Save and exit.
+
+Our role does not depend on any other folders, so clean up the unused folders for clarity. These were all created when we ran the ansible-galaxy role init command earlier.
+
+student@bchd:~/galaxy/roles$ rm -rf arista_backup/vars/ arista_backup/defaults/ arista_backup/handlers/ arista_backup/templates/ arista_backup/files/ arista_backup/tests/
+
+That's it! Try writing a playbook that uses our new role.
+
+student@bchd:~/galaxy/roles$ vim ~/mycode/playbook-withAristaRole.yml
+
+Create the following playbook solution that uses the role just created.
+
+---
+- name: Using the arista_backup role we created
+  hosts: all
+  connection: network_cli   # used to  connect to network devices
+  gather_facts: yes
+
+  vars:
+    ansible_network_os: eos
+
+  vars_files:
+    - ~/switch.creds
+
+  roles:
+    - arista_backup
+
+  tasks:
+    - name: print to the screen
+      debug:
+        msg: "the roles section will run before any tasks"
+Save and exit.
+
+Create a copy of ~/switch.creds
+
+student@bchd:~/galaxy/roles$ vim ~/switch.creds
+
+Ensure ~/switch.creds has the following values:
+
+ansible_become: yes
+ansible_become_method: enable
+ansible_user: admin
+ansible_ssh_pass: alta3
+Try running the playbook with the included role.
+
+student@bchd:~/galaxy/roles$ ansible-playbook ~/mycode/playbook-withAristaRole.yml -i "sw-1,sw-2"
+
+Ensure that the role worked and made the backup.
+
+student@bchd:~/galaxy/roles$ tree ~/mycode/backup/
+
+Return to the home directory
+
+student@bchd:~/galaxy/roles$ cd
+
+Great job! That's it for this lab.

@@ -1,0 +1,150 @@
+Lab Objective
+The objective of this lab is to learn how to create an Ansible module with Python. Completing this lab will enhance your understanding of how to customize Ansible to run in your own environment.
+
+To quote the Ansible development guide, "A module is a reusable, standalone script that Ansible runs on your behalf, either locally or remotely. Modules interact with your local machine, an API, or a remote system to perform specific tasks like changing a database password or spinning up a cloud instance. Each module can be used by the Ansible API, or by the ansible or ansible-playbook programs. A module provides a defined interface, accepting arguments and returning information to Ansible by printing a JSON string to stdout before exiting."
+
+Read the latest dev guide on creating a module:
+https://docs.ansible.com/ansible/latest/dev_guide/developing_modules_general.html
+
+There are some custom modules you can examine on the course author's GitHub repo. Take a moment, and navigate to that repository: https://github.com/rzfeeser/ansible-custom-modules-nasa-api
+
+The goal of our modul for this lab will be to interact with the Open Trivia Database.
+
+We will specify the following parameters when querying this API: amount - The number of trivia questions we want. difficulty - The difficulty level of the challenge.
+
+Try it out by visiting the following link in your browser:
+https://opentdb.com/api.php?amount=10&difficulty=medium
+
+Our module will allow the user to provide a difficulty level and an amount of questions they would like to receive.
+
+Procedure
+Within your terminal, ensure you are in /home/student/ (your home folder).
+
+student@bchd:~$ cd ~
+
+Be sure you have the ~/mycode/library/ directory. We can use this directory to store our custom ansible module.
+
+student@bchd:~$ mkdir -p ~/mycode/library/
+
+Edit your ~/.ansible.cfg file.
+
+student@bchd:~$ vim ~/.ansible.cfg
+
+If you already have data in your config file, just append this line to the bottom of the file. This tells ansible to search in the ~/mycode/library/ folder for additional modules.
+
+library=~/mycode/library
+Otherwise, ensure your file has at least the following.
+
+[defaults]
+library=~/mycode/library
+Save and exit.
+
+Now, we just need to create our custom module.
+
+student@bchd:~$ vim ~/mycode/library/trivia_api.py
+
+Create the following Ansible module (Python script). Be sure to review the comments.
+
+#!/usr/bin/python
+
+# Import required modules from Ansible
+from ansible.module_utils.basic import AnsibleModule
+import requests
+
+# Function to fetch trivia questions from the API
+def fetch_trivia_questions(amount, difficulty):
+    url = f"https://opentdb.com/api.php?amount={amount}&difficulty={difficulty}"
+    response = requests.get(url)
+    response_data = response.json()
+
+    # Check if the response contains questions
+    if response.status_code == 200 and response_data.get("results"):
+        return response_data["results"]
+    else:
+        return []
+
+# Main function
+def main():
+    # Define the module arguments
+    module_args = dict(
+        amount=dict(type='str', required=True),
+        difficulty=dict(type='str', required=True),
+    )
+
+    # Define the result dictionary
+    result = dict(
+        changed=False,
+        questions=[],
+        msg='',
+    )
+
+    # Initialize the Ansible module
+    module = AnsibleModule(
+        argument_spec=module_args,
+        supports_check_mode=True
+    )
+
+    # Get values of parameters from module params
+    amount = module.params['amount']
+    difficulty = module.params['difficulty']
+
+    # Fetch trivia questions using the custom function
+    questions = fetch_trivia_questions(amount, difficulty)
+    result['questions'] = questions
+
+    # Exit Ansible module with result
+    module.exit_json(**result)
+
+if __name__ == '__main__':
+    main()
+
+Save and exit.
+
+Now create a playbook that uses our new module.
+
+student@bchd:~$ vim ~/mycode/query_trivia_playbook.yml
+
+Create the following solution.
+
+---
+- name: Query Trivia API
+  hosts: localhost
+  gather_facts: no
+  vars_prompt:
+    - name: "AMOUNT"
+      prompt: "Enter the amount of questions"
+      private: no
+    - name: "DIFFICULTY"
+      prompt: "Enter the difficulty (easy, medium, hard)"
+      private: no
+
+  tasks:
+    - name: Call custom API module
+      trivia_api:
+        amount: "{{ AMOUNT }}"
+        difficulty: "{{ DIFFICULTY }}"
+      register: api_result
+
+    - name: Display API response
+      debug:
+        msg: "{{ item['question'] }} Answer: {{ item['correct_answer'] }}"
+      loop: "{{ api_result.questions }}"
+
+Save and exit.
+
+Try running your playbook.
+
+student@bchd:~$ ansible-playbook ~/mycode/query_trivia_playbook.yml
+
+Your output should suggest that everything worked properly. Great job! That's it for this lab, unless you want to try one or more of the CHALLENGES below.
+
+CHALLENGE 01 - Make the following enhancements to the module.
+
+Enhance the module to include a default value for difficulty and amount.
+CHALLENGE 02 - Make the following enhancements to the module.
+
+Slice the JSON return up in your own way.
+Copy the JSOn return to a local file.
+CHALLENGE 03 - Write your own module. A good start might be to try adapting a current Python or Perl script into a Ansible module. If you're successful, be sure to let the instructor know your accomplishment can be shared with the class.
+
+
